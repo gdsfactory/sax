@@ -10,7 +10,15 @@ theme:
   name: shadcn
   logo: assets/logo.svg
   favicon: assets/favicon.ico
+  pygments_style:
+    light: shadcn-light
+    dark: github-dark
   katex_options: {}
+  crossref_modules:
+    - sax
+    - sax.fit
+    - sax.models
+    - sax.models.rf
 
 nav:
   - home: index.md
@@ -87,7 +95,8 @@ markdown_extensions:
   - footnotes
   - toc:
         permalink: true
-  - pymdownx.emoji
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -97,11 +106,10 @@ markdown_extensions:
   - pymdownx.magiclink
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.superfences
   - admonition
   - pymdownx.details
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.superfences
+  - pymdownx.emoji
 
 hooks:
   - docs/hooks.py
