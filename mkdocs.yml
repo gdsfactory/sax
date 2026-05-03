@@ -7,35 +7,10 @@ repo_name: flaport/sax
 copyright: Copyright © 2025, Floris Laporte, Apache-2.0
 
 theme:
-  name: material
+  name: shadcn
   logo: assets/logo.svg
   favicon: assets/favicon.ico
-  font:
-    text: Roboto
-    code: Roboto Mono
-  palette:
-    - media: "(prefers-color-scheme)"
-      toggle:
-        icon: material/brightness-auto
-        name: Switch to light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
-      primary: blue
-      accent: deep purple
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      toggle:
-        icon: material/weather-night
-        name: Switch to system default
-      primary: blue
-      accent: deep purple
-  features:
-    - content.code.copy
-    - navigation.footer
-  search: true
+  katex_options: {}
 
 nav:
   - home: index.md
@@ -64,12 +39,6 @@ nav:
       - sax.models: models.md
       - sax.models.rf: models_rf.md
   - changelog: changelog.md
-
-extra_css:
-  - assets/custom.css
-
-extra_javascript:
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 plugins:
   - search
@@ -136,8 +105,3 @@ markdown_extensions:
 
 hooks:
   - docs/hooks.py
-
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/flaport

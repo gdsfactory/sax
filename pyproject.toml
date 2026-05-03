@@ -22,7 +22,7 @@ docs = [
   "mkautodoc>=0.2.0,<0.3.0",
   "mkdocs-autorefs>=1.4.4,<1.5.0",
   "mkdocs-bibtex>=4.4.0,<5.0.0",
-  "mkdocs-material>=9.7.6,<10.0.0",
+  "mkdocs-shadcn @ git+https://github.com/gdsfactory/mkdocs-shadcn.git",
   "mkdocs-matplotlib>=0.10.1,<0.11.0",
   "mkdocs>=1.6.1,<2.0.0",
   "mkdocstrings[python]>=1.0.4,<2.0.0",
