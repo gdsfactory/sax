@@ -127,6 +127,14 @@ class TestCPWThicknessCorrection:
         _ep_t, z0_t = cpw_thickness_correction(10e-6, 6e-6, 0.2e-6, ep0)
         assert float(z0_t) < float(z0_0)
 
+    def test_thickness_zero(self) -> None:
+        """With thickness=0, results should match the uncorrected case."""
+        ep0 = cpw_epsilon_eff(10e-6, 6e-6, 500e-6, 11.45)
+        ep_t, z0_t = cpw_thickness_correction(10e-6, 6e-6, 0.0, ep0)
+        z0_0 = cpw_z0(10e-6, 6e-6, ep0)
+        assert_allclose(float(ep_t), float(ep0), rtol=1e-10)
+        assert_allclose(float(z0_t), float(z0_0), rtol=1e-10)
+
 
 class TestPropagationConstant:
     """Tests for the complex propagation constant."""
@@ -214,6 +222,13 @@ class TestTransmissionLineSParams:
 
 class TestStraightJIT:
     """Tests for JIT compilation of the straight CPW model."""
+
+    def test_zero_length(self) -> None:
+        """Zero-length CPW → near-unity transmission."""
+        f = jnp.array([5e9])
+        result = coplanar_waveguide(f=f, length=0.0)
+        s21 = jnp.abs(result[("o1", "o2")])
+        assert_allclose(float(s21.squeeze()), 1.0, atol=1e-6)
 
     def test_straight_matches_non_jit(self) -> None:
         """JIT-compiled straight should give same results as non-JIT."""
