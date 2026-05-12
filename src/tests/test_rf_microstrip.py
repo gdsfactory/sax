@@ -87,6 +87,14 @@ class TestMicrostripThicknessCorrection:
         )
         assert float(z0_t) < float(z0_0)
 
+    def test_thickness_zero(self) -> None:
+        """With thickness=0, results should match the uncorrected case."""
+        ep0 = microstrip_epsilon_eff(10e-6, 500e-6, 11.45)
+        _, ep_t, z0_t = microstrip_thickness_correction(10e-6, 500e-6, 0.0, 11.45, ep0)
+        z0_0 = microstrip_z0(10e-6, 500e-6, ep0)
+        assert_allclose(float(ep_t), float(ep0), rtol=1e-10)
+        assert_allclose(float(z0_t), float(z0_0), rtol=1e-10)
+
 
 class TestStraightMicrostrip:
     """Tests for the straight_microstrip model."""
