@@ -1,0 +1,47 @@
+[run]
+branch = True
+omit =
+    *.bak
+    docs/*
+    nbs/*
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+
+    # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run:
+    if 0:
+    if __name__ == .__main__.:
+
+    # Don't complain about abstract methods, they aren't run:
+    @(abc\.)?abstractmethod
+
+    @(typing\.)?overload
+
+    if TYPE_CHECKING:
+
+    # Don't complain about functions with ellipsis body
+    def .*:[\s]*\.\.\.$
+
+    # Don't complain about Protocol inheritance or generic inheritance
+    class .*\(Protocol(\[.*\])?(,.*)?.*\):
+
+[html]
+directory = coverage_html_report
+
+[paths]
+source =
+    src/sax/
+    src/tests/
+
+ignore_errors = True

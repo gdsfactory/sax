@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+
+jobs:
+  build:
+    name: Build wheel and sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+      - name: Install build
+        run: pip install build
+      - name: Build wheel and sdist
+        run: python -m build
+      - name: Show artifacts
+        run: ls dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  release-pypi:
+    name: PyPI Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - build
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Show dist contents
+        run: ls dist
+      - name: Release PYPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release-gh:
+    name: GitHub Release
+    needs:
+      - release-pypi # we shouldn't release if releasing to pypi failed.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: ./dist
+      - name: Release - Create or convert from draft
+        run: |
+          if gh release list | grep Draft; then
+            old_version="$(gh release list | grep Draft | head -1 | cut -f1)"
+            new_version="${{ github.ref_name }}"
+            body=$(gh release view "$old_version" --json body -q ".body" | sed "s/\.\.\.$old_version/...$new_version/g")
+            echo "$body";
+            gh release delete "$old_version"
+            gh release create "$new_version" --title "$new_version" --notes "$body";
+            echo Release "$new_version" was published from draft template.;
+          else
+            gh release create "$new_version" --title "$new_version";
+            echo Release "$new_version" was published.;
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Upload artifacts into release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+
+  changelog:
+    name: Update changelog
+    needs:
+      - release-gh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: rhysd/changelog-from-release/action@v3
+        with:
+          file: CHANGELOG.md
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit_summary_template: 'update changelog for ${{ github.ref_name }}'

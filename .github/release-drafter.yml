@@ -1,0 +1,62 @@
+name-template: '$RESOLVED_VERSION'
+tag-template: '$RESOLVED_VERSION'
+change-template: '- $TITLE [#$NUMBER](https://github.com/flaport/sax/pull/$NUMBER)'
+template: |
+  # What's Changed
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION
+categories:
+  - title: 'Breaking Changes'
+    labels:
+      - 'breaking'
+  - title: 'New'
+    labels:
+      - 'feat'
+  - title: 'Bug Fixes'
+    label: 'bug'
+  - title: 'Maintenance'
+    labels:
+      - 'maint'
+      - 'github_actions'
+  - title: 'Documentation'
+    label: 'docs'
+  - title: 'Other changes'
+  - title: 'Dependency Updates'
+    label: 'deps'
+    collapse-after: 5
+version-resolver:
+  major:
+    labels: []
+  minor:
+    labels:
+      - 'breaking'
+  patch:
+    labels:
+      - 'feat'
+      - 'bug'
+      - 'maint'
+      - 'github_actions'
+      - 'docs'
+      - 'deps'
+  default: patch
+exclude-labels:
+  - 'skip-changelog'
+autolabeler:
+  - label: 'docs'
+    files:
+      - '*.md'
+    branch:
+      - '/docs-.+/'
+  - label: 'bug'
+    branch:
+      - '/fix-.+/'
+    title:
+      - '/fix/i'
+  - label: 'feat'
+    branch:
+      - '/feature-.+/'
+      - '/add-.+/'
+    title:
+      - '/^add\s/i'

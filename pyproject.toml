@@ -1,97 +1,213 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools", "pip", "build", "wheel"]
+requires = ["setuptools>=61", "uv", "build", "wheel"]
+
+[dependency-groups]
+dev = [
+  {include-group = "docs"},
+  {include-group = "lint"},
+  {include-group = "test"},
+  "build>=1.4.3,<2.0.0",
+  "gdsfactory>=9.40.0,<10.0.0",
+  "meow-sim>=0.15.0,<0.16.0",
+  "mkinit>=1.2.0,<1.3.0",
+  "scikit-learn>=1.8.0,<2.0.0",
+  "tmm>=0.2.0,<0.3.0",
+  "towncrier>=25.8.0,<26.0.0"
+]
+docs = [
+  "altair>=6.0.0,<7.0.0",
+  "griffe>=2.0.0,<3.0.0",
+  "ipykernel>=7.2.0,<8.0.0",
+  "mkautodoc>=0.2.0,<0.3.0",
+  "mkdocs-autorefs>=1.4.4,<1.5.0",
+  "mkdocs-bibtex>=4.4.0,<5.0.0",
+  "mkdocs-material>=9.7.6,<10.0.0",
+  "mkdocs-matplotlib>=0.10.1,<0.11.0",
+  "mkdocs>=1.6.1,<2.0.0",
+  "mkdocstrings[python]>=1.0.4,<2.0.0",
+  "nbconvert>=7.16.6,<8.0.0",
+  "plotly>=6.0.0,<7.0.0",
+  "pydot>=4.0.1,<5.0.0",
+  "vega-datasets>=0.9.0,<0.10.0"
+]
+lint = [
+  "nb-clean>=4.0.1,<5.0.0",
+  "nbstripout>=0.9.1,<0.10.0",
+  "pre-commit>=4.5.1,<5.0.0",
+  "pyright==1.1.408",
+  "ruff==0.15.10",
+  "ty==0.0.31"
+]
+test = [
+  "hypothesis>=6.152.1,<7.0.0",
+  "papermill>=2.7.0,<3.0.0",
+  "pytest-cov>=7.1.0,<8.0.0",
+  "pytest-randomly>=4.0.1,<5.0.0",
+  "pytest-xdist>=3.8.0,<4.0.0",
+  "pytest>=9.0.2,<10.0.0"
+]
 
 [project]
-name = "sax"
-version = "0.12.2"
-requires-python = ">=3.9.0"
-authors = [
-{ name = "Floris Laporte", email = "floris.laporte@rockleyphotonics.com" },
-]
-description = "Autograd and XLA for S-parameters"
-readme = "README.md"
+authors = [{name = "Floris Laporte", email = "floris.laporte@gmail.com"}]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
-  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Scientific/Engineering :: Physics"
 ]
-
 dependencies = [
-  "black",
-  "fastcore",
-  "flax>=0.8.2",
-  "jax",
-  "jaxlib",
-  "jaxtyping",
-  "klujax>=0.2.5",
-  "matplotlib",
-  "natsort",
-  "networkx",
-  "numpy",
-  "orjson",
-  "pydantic",
-  "pyyaml",
-  "tqdm",
+  "jax>=0.6.0,<0.10.0",
+  "jaxellip>=0.0.1,<0.1.0",
+  "jaxtyping>=0.2.0,<0.4.0",
+  "klujax>=0.5.0,<0.6.0",
+  "lark>=1.2.2,<2.0.0",
+  "matplotlib>=3.0.0,<4.0.0",
+  "natsort>=8.0.0,<9.0.0",
+  "networkx>=3.0.0,<4.0.0",
+  "numpy>=2.2.0,<3.0.0",
+  "optax>=0.2.0,<0.3.0",
+  "orjson>=3.0.0,<4.0.0",
+  "pandas>=2.0.0,<4.0.0",
+  "pydantic>=2.10.0,<3.0.0",
+  "pyyaml>=6.0.0,<7.0.0",
+  "scikit-rf>=1.8.0,<2.0.0",
+  "sympy>=1.14.0,<2.0.0",
+  "tqdm>=4.60.0,<5.0.0",
+  "typing-extensions>=4.13.2,<5.0.0",
+  "xarray>=2025.1.2,<2027.0.0"
 ]
+description = "Autograd and XLA for S-parameters"
+keywords = [
+  "simulation",
+  "optimization",
+  "autograd",
+  "simulation-framework",
+  "circuit",
+  "physics-simulation",
+  "photonics",
+  "s-parameters",
+  "jax",
+  "xla",
+  "photonic-circuit",
+  "photonic-optimization"
+]
+license = {text = "Apache Software License"}
+name = "sax"
+readme = "README.md"
+requires-python = ">=3.11.0"
+version = "0.17.0"
 
 [project.optional-dependencies]
-dev = [
-  "autodoc-pydantic",
-  "autograd",
-  "autoimport",
-  "black[jupyter]",
-  "bump2version",
-  "flake8",
-  "gdsfactory>=0.7.4",
-  "gplugins",
-  "ipyevents",
-  "ipykernel",
-  "ipympl",
-  "ipywidgets",
-  "isort",
-  "jedi",
-  "myst-nb",
-  "nbstripout",
-  "nlopt",
-  "papermill",
-  "pre-commit",
-  "pytest",
-  "sphinx-book-theme==1.0.1",
-  "sphinx-copybutton==0.5.2",
-  "sphinx==5.3.0",
-  "tmm",
-# "meep",
-]
-
 cuda = [
   "jax[cuda12]",
-  "cupy",
+  "cupy"
 ]
 
+[[tool.bver.file]]
+kind = "python"
+src = "pyproject.toml"
+
+[[tool.bver.file]]
+src = "README.md"
+
+[[tool.bver.file]]
+kind = "python"
+src = "src/sax/__init__.py"
+
+[tool.bver.git]
+actions = ["add-all", "commit", "tag", "push"]
+
+[tool.pytest.ini_options]
+addopts = '--tb=short'
+norecursedirs = ["scripts"]
+testpaths = ["src/tests"]
+
+[tool.ruff]
+fix = true
+target-version = "py311"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]  # see https://docs.astral.sh/ruff/rules
+ignore = [
+  "COM812",  # missing-trailing-comma
+  "D105",  # undocumented-magic-method
+  "D203",  # incorrect-blank-line-before-class
+  "D213",  # multi-line-summary-second-line
+  "E741",  # ambiguous-variable-name
+  "ERA001",  # commented-out-code
+  "FIX001",  # line-contains-fixme
+  "FIX002",  # line-contains-todo
+  "FIX004",  # line-contains-hack
+  "N803",  # invalid-argument-name
+  "N806",  # non-lowercase-variable-in-function
+  "PLC0414",  # useless-import-alias
+  "PLC0415",  # import-outside-top-level
+  "PLR0913",  # too-many-arguments
+  "PLR2004",  # magic-value-comparison
+  "PLW2901",  # redefined-loop-name
+  "RET504",  # unnecessary-assign
+  "RUF002",  # ambiguous-unicode-character-docstring
+  "S324",  # hashlib-insecure-hash-function
+  "TC001",  # typing-only-first-party-import
+  "TC002",  # typing-only-third-party-import
+  "TC003",  # typing-only-standard-library-import
+  "TC006",  # runtime-cast-value
+  "TD001",  # invalid-todo-tag
+  "TD002",  # missing-todo-author
+  "TD003",  # missing-todo-link
+  "TID252",  # relative-imports
+  "TRY003",  # raise-vanilla-args
+  "UP013"  # convert-typed-dict-functional-to-class
+]
+select = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = [
+  "ANN",  # flake8-annotations
+  "ARG001",  # unused-function-argument
+  "D",  # pydocstyle
+  "E402",  # module-import-not-at-top-of-file
+  "E501",  # line-too-long
+  "F821",  # undefined-name
+  "FBT003",  # boolean-positional-value-in-call
+  "N816",  # mixed-case-variable-in-global-scope
+  "PLC2401",  # non-ascii-name
+  "S101",  # assert
+  "SLF001",  # private-member-access
+  "T201"  # print
+]
+"docs/hooks.py" = [
+  "INP001",  # implicit-namespace-package
+  "ARG001",  # unused-function-argument
+  "ANN401",  # any-type
+  "FBT001"  # boolean-type-hint-positional-argument
+]
+"src/sax/parsers/*.py" = [
+  "E501",  # line-too-long
+  "N802"  # invalid-function-name
+]
+"src/sax/saxtypes/*.py" = [
+  "ANN401"  # any-type
+]
+"src/tests/*" = [
+  "D",  # pydocstyle
+  "INP001",  # implicit-namespace-package
+  "PT011",  # pytest-raises-too-broad
+  "S101",  # assert
+  "T201"  # print
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["sax", "sax.nn", "sax.backends"]
-exclude = []
-namespaces = true
-
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
-
-[tool.pyright]
-reportPrivateImportUsage = false
-
-[tool.flake8]
-ignore = ['F722']
-
-[tool.coverage.run]
-omit = "sax/nn/*"
+where = ["src"]

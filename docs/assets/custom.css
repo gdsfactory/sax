@@ -1,0 +1,19 @@
+.highlight pre code {
+  border-radius: 7px;
+}
+
+body[data-md-color-scheme="default"] .highlight.language-python pre code {
+  background-color: #f5faff;
+}
+
+body[data-md-color-scheme="default"] .highlight.language-text pre code {
+  background-color: #fafafa;
+}
+
+body[data-md-color-scheme="slate"] .highlight.language-python pre code {
+  background-color: #222531;
+}
+
+body[data-md-color-scheme="slate"] .highlight.language-text pre code {
+  background-color: #22252c;
+}

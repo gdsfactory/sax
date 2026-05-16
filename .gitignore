@@ -1,157 +1,87 @@
-*.swp
-*.nfs*
-
-# IDE settings
-.vscode/
-.idea/
-
-# nbdev
-docs/
-.jekyll-cache/
-Gemfile.lock
-*.bak
-.gitattributes
-.last_checked
-.gitconfig
-*.bak
+# files
+*.DS_Store
+*.c
+*.cover
+*.egg
+*.egg-info
 *.log
-*~
-~*
-_tmp*
-tmp*
-tags
-
-# Byte-compiled / optimized / DLL files
-__pycache__/
+*.manifest
+*.mo
+*.pot
+*.py,cover
 *.py[cod]
-*$py.class
-
-# C extensions
+*.sage.py
 *.so
-
-# Distribution / packaging
+*.spec
 .Python
+.cache
+.coverage
+.coverage.*
+.dmypy.json
+.env
+.installed.cfg
+.python-version
+.ropeproject
+.scrapy
+.spyderproject
+.spyproject
+.webassets-cache
+MANIFEST
+celerybeat-schedule
+celerybeat.pid
+coverage.xml
+db.sqlite3
+db.sqlite3-journal
+dmypy.json
+ipython_config.py
+local_settings.py
+neff_data.csv
+nosetests.xml
+package-lock.json
+pip-delete-this-directory.txt
+pip-log.txt
+uv.lock
+
+# folders
+.eggs/
+.hypothesis/
+.ipynb_checkpoints/
+.mypy_cache/
+.nox/
+.pytest_cache/
+.tox/
+.venv/
+.virtual_documents/
+.vscode/
+ENV/
+__pycache__/
+__pypackages__/
 build/
 develop-eggs/
 dist/
+docs/_build/
+docs/site/
 downloads/
 eggs/
-.eggs/
+env.bak/
+env/
+extra/
+failed/
+htmlcov/
+instance/
 lib/
 lib64/
+modes/
+node_modules/
 parts/
-sdist/
-var/
-wheels/
 pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-docs/source/examples
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
 profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
+sdist/
+share/python-wheels/
+site/
+target/
+var/
 venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# Pyright
-node_modules
-package-lock.json
+venv/
+wheelhouse/
+wheels/

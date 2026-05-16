@@ -1,6 +1,0 @@
-include Dockerfile
-include Dockerfile.dev
-include LICENSE
-include MANIFEST.in
-include README.md
-include pyproject.toml

@@ -1,10 +1,10 @@
 # SAX
 
-> S + Autograd + XLA
+> 0.17.0
 
-![SAX LOGO](docs/source/_static/img/logo.svg)
+![SAX LOGO](docs/assets/logo.svg)
 
-Autograd and XLA for S-parameters - a scatter parameter circuit simulator and
+SAX: S-Matrices with Autograd and XLA - a scatter parameter circuit simulator and
 optimizer for the frequency domain based on [JAX](https://github.com/google/jax).
 
 The simulator was developed for simulating Photonic Integrated Circuits but in fact is
@@ -17,8 +17,7 @@ dive in...
 
 ## Quick Start
 
-[Full Quick Start page](https://flaport.github.io/sax/examples/01_quick_start.html) -
-[Documentation](https://flaport.github.io/sax).
+[Full Quick Start page](https://flaport.github.io/sax/nbs/examples/01_quick_start) - [Documentation](https://flaport.github.io/sax).
 
 Let's first import the SAX library, along with JAX and the JAX-version of numpy:
 
@@ -117,10 +116,10 @@ plt.figlegend(ncol=2, loc="upper center")
 plt.show()
 ```
 
-![output](docs/source/_static/img/output_10_0.png)
+![output](docs/assets/output_10_0.png)
 
 Those are the basics. For more info, check out the **full**
-[SAX Quick Start page](https://flaport.github.io/sax/examples/01_quick_start.html) or the rest of the [Documentation](https://flaport.github.io/sax).
+[SAX Quick Start page](https://flaport.github.io/sax/nbs/examples/01_quick_start) or the rest of the [Documentation](https://flaport.github.io/sax).
 
 ## Installation
 
@@ -139,4 +138,4 @@ pip install 'sax[dev]'
 
 ## License
 
-Copyright © 2023, Floris Laporte, [Apache-2.0 License](https://github.com/flaport/sax/blob/master/LICENSE)
+Copyright © 2025, Floris Laporte, [Apache-2.0 License](https://github.com/flaport/sax/blob/master/LICENSE)

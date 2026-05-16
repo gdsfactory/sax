@@ -1,0 +1,63 @@
+name: Test
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install UV
+        uses: astral-sh/setup-uv@v7
+      - name: Install Just
+        uses: taiki-e/install-action@just
+      - name: Set up python
+        run: just dev
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install UV
+        uses: astral-sh/setup-uv@v7
+      - name: Install Just
+        uses: taiki-e/install-action@just
+      - name: Install HDF5 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install hdf5
+      - name: Run tests
+        run: just test
+      - name: Upload artifacts [tests]
+        uses: actions/upload-artifact@master
+        with:
+          name: tests-${{ matrix.os }}
+          path: ./src/tests
+
+  test_coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install UV
+        uses: astral-sh/setup-uv@v7
+      - name: Install Just
+        uses: taiki-e/install-action@just
+      - name: Run tests with coverage
+        run: just cov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

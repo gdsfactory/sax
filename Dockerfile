@@ -1,1 +1,0 @@
-FROM flaport/sax:latest
