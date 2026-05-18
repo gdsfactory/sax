@@ -3,6 +3,8 @@
 Mirrors the SAX netlist and circuit test patterns but uses kfnetlist input format.
 """
 
+# pyright: reportTypedDictNotRequiredAccess=false
+
 from __future__ import annotations
 
 import json
@@ -12,14 +14,12 @@ import pytest
 import sax
 
 kfnetlist = pytest.importorskip("kfnetlist")
-from kfnetlist import (  # noqa: E402
-    Net,
+from kfnetlist import (  # noqa: E402  # type: ignore[import-not-found]
     Netlist,
     NetlistPort,
     PortArrayRef,
     PortRef,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build kfnetlist objects for common topologies
@@ -267,9 +267,7 @@ class TestArrayPortRefs:
         nl = Netlist()
         nl.create_port("in0")
         nl.create_port("out0")
-        nl.create_inst(
-            "arr", kcl="P", component="straight", settings={}, na=2, nb=1
-        )
+        nl.create_inst("arr", kcl="P", component="straight", settings={}, na=2, nb=1)
         nl.create_net(
             NetlistPort(name="in0"),
             PortArrayRef(instance="arr", port="in0", ia=1, ib=1),
@@ -287,9 +285,7 @@ class TestArrayPortRefs:
         nl = Netlist()
         nl.create_port("in0")
         nl.create_port("out0")
-        nl.create_inst(
-            "arr", kcl="P", component="straight", settings={}, na=2, nb=1
-        )
+        nl.create_inst("arr", kcl="P", component="straight", settings={}, na=2, nb=1)
         nl.create_net(
             NetlistPort(name="in0"),
             PortArrayRef(instance="arr", port="in0", ia=1, ib=1),
@@ -308,9 +304,7 @@ class TestArrayPortRefs:
 
     def test_2d_array(self) -> None:
         nl = Netlist()
-        nl.create_inst(
-            "grid", kcl="P", component="comp", settings={}, na=2, nb=3
-        )
+        nl.create_inst("grid", kcl="P", component="comp", settings={}, na=2, nb=3)
         nl.create_port("p")
         nl.create_net(
             NetlistPort(name="p"),
@@ -332,12 +326,8 @@ class TestParseKfnetlistRecursive:
         nl_sub.create_inst("wg", kcl="P", component="straight", settings={})
         nl_sub.create_port("in0")
         nl_sub.create_port("out0")
-        nl_sub.create_net(
-            NetlistPort(name="in0"), PortRef(instance="wg", port="in0")
-        )
-        nl_sub.create_net(
-            PortRef(instance="wg", port="out0"), NetlistPort(name="out0")
-        )
+        nl_sub.create_net(NetlistPort(name="in0"), PortRef(instance="wg", port="in0"))
+        nl_sub.create_net(PortRef(instance="wg", port="out0"), NetlistPort(name="out0"))
 
         recnet = sax.parse_kfnetlist_recursive(
             {"top": nl_top.to_dict(), "sub": nl_sub.to_dict()}
@@ -371,7 +361,7 @@ class TestCircuitFromKfnetlist:
         """Mirror of test_circuit.test_circuit using kfnetlist input."""
         nl = _make_mzi()
         recnet = sax.parse_kfnetlist(nl)
-        mzi, info = sax.circuit(
+        mzi, _info = sax.circuit(
             netlist=recnet,
             models={
                 "coupler": sax.models.coupler_ideal,
@@ -400,7 +390,7 @@ class TestCircuitFromKfnetlist:
     def test_straight_chain_circuit(self) -> None:
         nl = _make_straight_chain()
         recnet = sax.parse_kfnetlist(nl)
-        circuit_fn, info = sax.circuit(
+        circuit_fn, _info = sax.circuit(
             netlist=recnet,
             models={"straight": sax.models.straight},
         )
@@ -416,9 +406,7 @@ class TestCircuitFromKfnetlist:
         nl.create_net(NetlistPort(name="in"), PortRef(instance="wg1", port="in0"))
 
         recnet = sax.parse_kfnetlist(nl)
-        circuit_fn, _ = sax.circuit(
-            recnet, models={"waveguide": sax.models.straight}
-        )
+        circuit_fn, _ = sax.circuit(recnet, models={"waveguide": sax.models.straight})
         result = circuit_fn()
         ports = sax.get_ports(result)
         assert len(ports) == 1
@@ -435,16 +423,10 @@ class TestCircuitFromKfnetlist:
             component="straight",
             settings={"length": 100.0, "loss_dB_cm": 1.0},
         )
-        nl.create_net(
-            NetlistPort(name="in0"), PortRef(instance="wg1", port="in0")
-        )
-        nl.create_net(
-            PortRef(instance="wg1", port="out0"), NetlistPort(name="out0")
-        )
+        nl.create_net(NetlistPort(name="in0"), PortRef(instance="wg1", port="in0"))
+        nl.create_net(PortRef(instance="wg1", port="out0"), NetlistPort(name="out0"))
         recnet = sax.parse_kfnetlist(nl)
-        circuit_fn, _ = sax.circuit(
-            recnet, models={"straight": sax.models.straight}
-        )
+        circuit_fn, _ = sax.circuit(recnet, models={"straight": sax.models.straight})
         result = circuit_fn()
         assert abs(result[("in0", "out0")]) < 1.0
 

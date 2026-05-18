@@ -18,7 +18,7 @@ __all__ = [
 
 
 def parse_kfnetlist(
-    netlist: Any,
+    netlist: object,
     *,
     top_level_name: str = "top_level",
 ) -> sax.RecursiveNetlist:
@@ -74,24 +74,26 @@ def parse_kfnetlist_recursive(
         circuit_fn, info = sax.circuit(recnet, models={...})
         ```
     """
-    if isinstance(netlists, str):
-        netlists = json.loads(netlists)
+    raw: dict[str, Any] = (
+        json.loads(netlists) if isinstance(netlists, str) else netlists
+    )
 
     result: sax.RecursiveNetlist = {}
-    for name, nl in netlists.items():
+    for name, nl in raw.items():
         d = _to_dict(nl)
         result[name] = _convert_flat(d)
     return result
 
 
-def _to_dict(netlist: Any) -> dict:
+def _to_dict(netlist: object) -> dict:
     """Normalise *netlist* into a plain dict."""
     if isinstance(netlist, str):
         return json.loads(netlist)
     if isinstance(netlist, dict):
         return netlist
-    if hasattr(netlist, "to_dict"):
-        return netlist.to_dict()
+    to_dict = getattr(netlist, "to_dict", None)
+    if to_dict is not None:
+        return to_dict()
     msg = f"Cannot convert {type(netlist)} to a kfnetlist dict."
     raise TypeError(msg)
 
@@ -128,8 +130,8 @@ def _is_port(member: dict) -> bool:
     return "name" in member and "instance" not in member
 
 
-def _convert_flat(d: dict) -> sax.Netlist:
-    """Convert a single kfnetlist dict into a SAX flat Netlist."""
+def _build_instances(d: dict) -> tuple[sax.Instances, set[str]]:
+    """Build SAX instances dict and identify array instances."""
     instances: sax.Instances = {}
     array_instances: set[str] = set()
     for name, inst in d.get("instances", {}).items():
@@ -140,32 +142,25 @@ def _convert_flat(d: dict) -> sax.Netlist:
             nb = int(array.get("nb", 1))
             if na > 1 or nb > 1:
                 array_instances.add(name)
+    return instances, array_instances
 
+
+def _convert_flat(d: dict) -> sax.Netlist:
+    """Convert a single kfnetlist dict into a SAX flat Netlist."""
+    instances, array_instances = _build_instances(d)
     connections: sax.Connections = {}
     ports: sax.Ports = {}
 
-    def _fmt(member: dict) -> str:
-        return _format_port_ref(member, array_instances)
-
     for net_members in d.get("nets", []):
-        ext_ports = [m for m in net_members if _is_port(m)]
-        inst_ports = [m for m in net_members if not _is_port(m)]
-
-        if len(ext_ports) == 1 and len(inst_ports) == 1:
-            ports[ext_ports[0]["name"]] = _fmt(inst_ports[0])
-
-        elif len(ext_ports) == 0 and len(inst_ports) == 2:
-            connections[_fmt(inst_ports[0])] = _fmt(inst_ports[1])
-
-        elif len(ext_ports) == 0 and len(inst_ports) > 2:
-            for i in range(len(inst_ports) - 1):
-                connections[_fmt(inst_ports[i])] = _fmt(inst_ports[i + 1])
-
-        elif len(ext_ports) >= 1 and len(inst_ports) >= 1:
-            for ep in ext_ports:
-                ports[ep["name"]] = _fmt(inst_ports[0])
-            for i in range(len(inst_ports) - 1):
-                connections[_fmt(inst_ports[i])] = _fmt(inst_ports[i + 1])
+        ext = [m for m in net_members if _is_port(m)]
+        inst = [m for m in net_members if not _is_port(m)]
+        for ep in ext:
+            if inst:
+                ports[ep["name"]] = _format_port_ref(inst[0], array_instances)
+        for i in range(len(inst) - 1):
+            connections[_format_port_ref(inst[i], array_instances)] = _format_port_ref(
+                inst[i + 1], array_instances
+            )
 
     result: sax.Netlist = {"instances": instances}
     if connections:
