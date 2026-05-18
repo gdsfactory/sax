@@ -1,3 +1,15 @@
+<a id="0.18.0"></a>
+# [0.18.0](https://github.com/flaport/sax/releases/tag/0.18.0) - 2026-05-18
+
+# What's Changed
+
+## New
+
+- Add kfnetlist parser (`parse_kfnetlist`, `parse_kfnetlist_recursive`) for ingesting kfnetlist Netlist objects, dicts, and JSON into SAX circuits. Supports flat and hierarchical netlists, array instances with PortArrayRef mapping, and full round-trip from kfnetlist extraction output to `sax.circuit()`.
+
+[Changes][0.18.0]
+
+
 <a id="0.17.0"></a>
 # [0.17.0](https://github.com/flaport/sax/releases/tag/0.17.0) - 2026-04-16
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __author__ = "Floris Laporte"
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 
 # isort: off
 from .saxtypes import (
@@ -218,6 +218,8 @@ from .interpolation import (
 
 from . import fit
 from .parsers import (
+    parse_kfnetlist,
+    parse_kfnetlist_recursive,
     parse_lumerical_dat,
     parse_touchstone,
     write_lumerical_dat,
@@ -392,6 +394,8 @@ __all__ = [  # noqa: RUF022
     "netlist",
     "normalization",
     "normalize",
+    "parse_kfnetlist",
+    "parse_kfnetlist_recursive",
     "parse_lumerical_dat",
     "parse_touchstone",
     "parsers",
