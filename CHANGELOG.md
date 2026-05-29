@@ -1,13 +1,21 @@
-<a id="0.18.0"></a>
-# [0.18.0](https://github.com/flaport/sax/releases/tag/0.18.0) - 2026-05-18
+<a id="0.18.1"></a>
+# [0.18.1](https://github.com/flaport/sax/releases/tag/0.18.1) - 2026-05-29
 
 # What's Changed
 
 ## New
 
-- Add kfnetlist parser (`parse_kfnetlist`, `parse_kfnetlist_recursive`) for ingesting kfnetlist Netlist objects, dicts, and JSON into SAX circuits. Supports flat and hierarchical netlists, array instances with PortArrayRef mapping, and full round-trip from kfnetlist extraction output to `sax.circuit()`.
+- Add more unit tests for RF models and transmission line components [#112](https://github.com/flaport/sax/pull/112)
+- Expose RF models in sax.models [#113](https://github.com/flaport/sax/pull/113)
 
-[Changes][0.18.0]
+## Other changes
+
+- Add kfnetlist parser and bump to 0.18.0 [#114](https://github.com/flaport/sax/pull/114)
+- fix(klu): keep topology indices in numpy so nested sax.circuit traces cleanly [#110](https://github.com/flaport/sax/pull/110)
+
+**Full Changelog**: https://github.com/flaport/sax/compare/0.17.0...0.18.1
+
+[Changes][0.18.1]
 
 
 <a id="0.17.0"></a>
@@ -1103,6 +1111,7 @@
 [Changes][0.8.7]
 
 
+[0.18.1]: https://github.com/flaport/sax/compare/0.17.0...0.18.1
 [0.17.0]: https://github.com/flaport/sax/compare/0.16.14...0.17.0
 [0.16.14]: https://github.com/flaport/sax/compare/0.16.13...0.16.14
 [0.16.13]: https://github.com/flaport/sax/compare/0.16.12...0.16.13
