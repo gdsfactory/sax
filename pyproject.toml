@@ -102,7 +102,7 @@ license = {text = "Apache Software License"}
 name = "sax"
 readme = "README.md"
 requires-python = ">=3.11.0"
-version = "0.18.0"
+version = "0.18.1"
 
 [[tool.bver.file]]
 kind = "python"
