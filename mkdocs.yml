@@ -53,6 +53,8 @@ nav:
       - hierarchical circuits: nbs/examples/11_hierarchical_circuits.md
       - data parsers: nbs/examples/12_data_parsers.md
       - surface models: nbs/examples/13_surface_models.md
+      - probes: nbs/examples/14_probes.md
+      - multi link: nbs/examples/15_multi_link.md
   - internals:
       - backends: nbs/internals/03_backends.md
       - circuit: nbs/internals/02_circuit.md
