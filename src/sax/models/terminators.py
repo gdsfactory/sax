@@ -38,7 +38,6 @@ def terminator(
         Ideal terminator:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

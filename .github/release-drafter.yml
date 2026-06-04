@@ -1,6 +1,6 @@
 name-template: '$RESOLVED_VERSION'
 tag-template: '$RESOLVED_VERSION'
-change-template: '- $TITLE [#$NUMBER](https://github.com/flaport/sax/pull/$NUMBER)'
+change-template: '- $TITLE [#$NUMBER](https://github.com/gdsfactory/sax/pull/$NUMBER)'
 template: |
   # What's Changed
 

@@ -36,7 +36,6 @@ def crossing_ideal(wl: sax.FloatArrayLike = sax.WL_C) -> sax.SDict:
         Ideal crossing:
 
     ```python
-    # mkdocs: render
     import matplotlib.pyplot as plt
     import numpy as np
     import jax.numpy as jnp

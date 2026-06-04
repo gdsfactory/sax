@@ -42,7 +42,6 @@ def straight(
         Lossless waveguide:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -98,7 +97,6 @@ def attenuator(
         Attenuator:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -157,7 +155,6 @@ def phase_shifter(
         Phase shifter:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

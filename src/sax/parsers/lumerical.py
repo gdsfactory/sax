@@ -45,7 +45,7 @@ def parse_lumerical_dat(
     msg = (
         "The `parse_lumerical_dat` function is experimental. "
         "If you encounter any issues, "
-        "Please file a bug report here: https://github.com/flaport/sax/issues ."
+        "Please file a bug report here: https://github.com/gdsfactory/sax/issues ."
     )
     warnings.warn(msg, stacklevel=2, category=sax.ExperimentalWarning)
     content = sax.read(content_or_filename)

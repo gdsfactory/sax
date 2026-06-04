@@ -33,7 +33,6 @@ def mmi1x2_ideal(wl: sax.FloatArrayLike = sax.WL_C) -> sax.SDict:
         Ideal 1x2 MMI:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -78,7 +77,6 @@ def mmi2x2_ideal(*, wl: sax.FloatArrayLike = sax.WL_C) -> sax.SDict:
         Ideal 2x2 MMI:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -131,7 +129,6 @@ def mmi1x2(
         Basic 1x2 MMI:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -206,7 +203,6 @@ def mmi2x2(
         Basic 2x2 MMI:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

@@ -1,0 +1,161 @@
+[project]
+copyright = "Copyright &copy; 2025, Floris Laporte, Apache-2.0"
+dev_addr = "localhost:8080"
+docs_dir = "docs"
+extra_css = ["assets/custom.css"]
+extra_javascript = ["https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
+nav = [
+  {"home" = "index.md"},
+  {"examples" = [
+    {"quick start" = "nbs/examples/01_quick_start.md"},
+    {"all pass" = "nbs/examples/02_all_pass_filter.md"},
+    {"circuit from yaml" = "nbs/examples/03_circuit_from_yaml.md"},
+    {"multimode" = "nbs/examples/04_multimode_simulations.md"},
+    {"thin film" = "nbs/examples/05_thinfilm.md"},
+    {"additive" = "nbs/examples/06_additive_backend.md"},
+    {"layout aware" = "nbs/examples/07_layout_aware.md"},
+    {"sparse (coo)" = "nbs/examples/08_sparse_coo.md"},
+    {"forward only" = "nbs/examples/09_forward_only_backend.md"},
+    {"neff dispersion" = "nbs/examples/10_wavelength_dependent_neff.md"},
+    {"hierarchical circuits" = "nbs/examples/11_hierarchical_circuits.md"},
+    {"data parsers" = "nbs/examples/12_data_parsers.md"},
+    {"surface models" = "nbs/examples/13_surface_models.md"},
+    {"probes" = "nbs/examples/14_probes.md"},
+    {"multi link" = "nbs/examples/15_multi_link.md"}
+  ]},
+  {"internals" = [
+    {"backends" = "nbs/internals/03_backends.md"},
+    {"circuit" = "nbs/internals/02_circuit.md"},
+    {"models" = "nbs/internals/01_models.md"},
+    {"all models" = "nbs/internals/04_all_models.md"}
+  ]},
+  {"api reference" = [
+    {"sax" = "api.md"},
+    {"sax.fit" = "fit.md"},
+    {"sax.models" = "models.md"},
+    {"sax.models.rf" = "models_rf.md"}
+  ]},
+  {"changelog" = "changelog.md"}
+]
+repo_name = "gdsfactory/sax"
+repo_url = "https://github.com/gdsfactory/sax"
+site_author = "Floris Laporte"
+site_description = "Autograd and XLA for S-parameters"
+site_dir = "site"
+site_name = "sax"
+site_url = "https://gdsfactory.github.io/sax"
+
+# ----------------------------------------------------------------------------
+# Social configuration
+# ----------------------------------------------------------------------------
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/gdsfactory/sax"
+
+[project.markdown_extensions.admonition]
+
+# ----------------------------------------------------------------------------
+# Markdown extensions configuration
+# ----------------------------------------------------------------------------
+[project.markdown_extensions.attr_list]
+
+[project.markdown_extensions.footnotes]
+
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.magiclink]
+
+[project.markdown_extensions.pymdownx.snippets]
+
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
+[project.markdown_extensions.toc]
+permalink = true
+
+# ----------------------------------------------------------------------------
+# Plugins configuration
+# ----------------------------------------------------------------------------
+[project.plugins.mkdocstrings.handlers.python]
+inventories = [
+  "https://docs.jax.dev/en/latest/objects.inv",
+  "https://docs.kidger.site/jaxtyping/objects.inv",
+  "https://docs.python.org/3/objects.inv",
+  "https://docs.xarray.dev/en/stable/objects.inv",
+  "https://matplotlib.org/stable/objects.inv",
+  "https://numpy.org/doc/stable/objects.inv",
+  "https://pandas.pydata.org/docs/objects.inv",
+  "https://python-markdown.github.io/objects.inv",
+  "https://scipy.github.io/devdocs/objects.inv",
+  "https://typing.readthedocs.io/en/latest/objects.inv",
+  "https://www.mkdocs.org/objects.inv"
+]
+paths = ["src"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_options = {ignore_init_summary = true}
+docstring_section_style = "table"
+docstring_style = "google"
+filters = ["!^_"]
+heading_level = 1
+inherited_members = true
+line_length = 88
+merge_init_into_class = true
+separate_signature = true
+show_root_full_path = false
+show_root_heading = true
+show_signature_annotations = true
+show_source = true
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+signature_crossrefs = true
+summary = true
+
+# ----------------------------------------------------------------------------
+# Theme configuration
+# ----------------------------------------------------------------------------
+[project.theme]
+favicon = "assets/favicon.ico"
+features = [
+  "content.code.copy",
+  "navigation.footer"
+]
+language = "en"
+logo = "assets/logo.svg"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "material/brightness-auto"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+accent = "deep-purple"
+media = "(prefers-color-scheme: light)"
+primary = "blue"
+scheme = "default"
+toggle.icon = "material/weather-sunny"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+accent = "deep-purple"
+media = "(prefers-color-scheme: dark)"
+primary = "blue"
+scheme = "slate"
+toggle.icon = "material/weather-night"
+toggle.name = "Switch to system default"
