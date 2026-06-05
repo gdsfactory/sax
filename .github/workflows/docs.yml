@@ -43,14 +43,6 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: Install Just
         uses: taiki-e/install-action@just
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy, cargo
-      - name: Install svgbob
-        run: cargo install svgbob_cli
       - name: Build docs
         run: just dev nbdocs docs
       - name: Upload artifact [site]

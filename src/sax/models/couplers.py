@@ -43,7 +43,6 @@ def coupler_ideal(
         Ideal coupler:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -137,7 +136,6 @@ def coupler(
         Basic dispersive coupler:
 
     ```python
-    # mkdocs: render
     import matplotlib.pyplot as plt
     import numpy as np
     import sax
@@ -239,7 +237,6 @@ def grating_coupler(
         Basic grating coupler:
 
     ```python
-    # mkdocs: render
     import matplotlib.pyplot as plt
     import numpy as np
     import sax

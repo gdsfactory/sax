@@ -26,10 +26,10 @@ cov: ipykernel
 docs:
   sed 's|](docs/|](|g' README.md > docs/index.md
   sed 's|^#|###|g' CHANGELOG.md | sed 's|^### \[0|## [0|g' > docs/changelog.md
-  uv run mkdocs build
+  uv run zensical build
 
 serve:
-  uv run mkdocs serve -a localhost:8080
+  uv run zensical serve
 
 nbrun: ipykernel
   find nbs -maxdepth 2 -mindepth 1 -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" -not -path "./.venv/*" | xargs parallel -j `nproc --all` uv run papermill {} {} -k sax :::
@@ -42,13 +42,7 @@ _nbdocs:
   find nbs/internals -maxdepth 1 -mindepth 1 -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" -not -path "./.venv/*" | xargs parallel -j `nproc --all` uv run jupyter nbconvert --to markdown --embed-images {} --output-dir docs/nbs/internals ':::'
   find nbs/examples -maxdepth 1 -mindepth 1 -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" -not -path "./.venv/*" | xargs parallel -j `nproc --all` uv run jupyter nbconvert --to markdown --embed-images {} --output-dir docs/nbs/examples ':::'
 
-[macos]
 nbdocs: _nbdocs
-  find docs/nbs -name "*.md" | xargs sed -i '' 's|```svgbob|```{svgbob}|g'
-
-[linux]
-nbdocs: _nbdocs
-  find docs/nbs -name "*.md" | xargs sed -i 's|```svgbob|```{svgbob}|g'
 
 nbclean-all:
   find . -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" -not -path "./.venv/*" | xargs just nbclean

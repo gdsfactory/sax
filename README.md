@@ -17,7 +17,7 @@ dive in...
 
 ## Quick Start
 
-[Full Quick Start page](https://flaport.github.io/sax/nbs/examples/01_quick_start) - [Documentation](https://flaport.github.io/sax).
+[Full Quick Start page](https://gdsfactory.github.io/sax/nbs/examples/01_quick_start) - [Documentation](https://gdsfactory.github.io/sax).
 
 Let's first import the SAX library, along with JAX and the JAX-version of numpy:
 
@@ -119,7 +119,7 @@ plt.show()
 ![output](docs/assets/output_10_0.png)
 
 Those are the basics. For more info, check out the **full**
-[SAX Quick Start page](https://flaport.github.io/sax/nbs/examples/01_quick_start) or the rest of the [Documentation](https://flaport.github.io/sax).
+[SAX Quick Start page](https://gdsfactory.github.io/sax/nbs/examples/01_quick_start) or the rest of the [Documentation](https://gdsfactory.github.io/sax).
 
 ## Installation
 
@@ -138,4 +138,4 @@ pip install 'sax[dev]'
 
 ## License
 
-Copyright © 2025, Floris Laporte, [Apache-2.0 License](https://github.com/flaport/sax/blob/master/LICENSE)
+Copyright © 2025, Floris Laporte, [Apache-2.0 License](https://github.com/gdsfactory/sax/blob/main/LICENSE)

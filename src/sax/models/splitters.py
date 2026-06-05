@@ -41,7 +41,6 @@ def splitter_ideal(
         Ideal 1x2 splitter:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

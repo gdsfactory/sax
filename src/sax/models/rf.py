@@ -44,7 +44,6 @@ def gamma_0_load(
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -101,7 +100,6 @@ def tee(*, f: sax.FloatArrayLike = DEFAULT_FREQUENCY) -> sax.SDict:
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -155,7 +153,6 @@ def impedance(
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -203,7 +200,6 @@ def admittance(
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -251,11 +247,10 @@ def resistor(
         S-dictionary representing the resistor element
 
     References:
-        [@pozar2012]
+        Pozar
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -298,7 +293,6 @@ def capacitor(
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -346,7 +340,6 @@ def inductor(
 
     Examples:
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

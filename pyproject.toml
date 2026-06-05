@@ -19,17 +19,12 @@ docs = [
   "altair>=6.0.0,<7.0.0",
   "griffe>=2.0.0,<3.0.0",
   "ipykernel>=7.2.0,<8.0.0",
-  "mkautodoc>=0.2.0,<0.3.0",
-  "mkdocs-autorefs>=1.4.4,<1.5.0",
-  "mkdocs-bibtex>=4.4.0,<5.0.0",
-  "mkdocs-material>=9.7.6,<10.0.0",
-  "mkdocs-matplotlib>=0.10.1,<0.11.0",
-  "mkdocs>=1.6.1,<2.0.0",
-  "mkdocstrings[python]>=1.0.4,<2.0.0",
+  "mkdocstrings-python>=2.0.0,<3.0.0",
   "nbconvert>=7.16.6,<8.0.0",
   "plotly>=6.0.0,<7.0.0",
   "pydot>=4.0.1,<5.0.0",
-  "vega-datasets>=0.9.0,<0.10.0"
+  "vega-datasets>=0.9.0,<0.10.0",
+  "zensical>=0.0.43,<0.1.0"
 ]
 lint = [
   "nb-clean>=4.0.1,<5.0.0",
@@ -178,12 +173,6 @@ select = ["ALL"]
   "S101",  # assert
   "SLF001",  # private-member-access
   "T201"  # print
-]
-"docs/hooks.py" = [
-  "INP001",  # implicit-namespace-package
-  "ARG001",  # unused-function-argument
-  "ANN401",  # any-type
-  "FBT001"  # boolean-type-hint-positional-argument
 ]
 "src/sax/parsers/*.py" = [
   "E501",  # line-too-long

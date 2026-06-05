@@ -43,7 +43,6 @@ def reflector(
         50% reflector:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -106,7 +105,6 @@ def mirror(
         Perfect mirror:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax

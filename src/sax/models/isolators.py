@@ -40,7 +40,6 @@ def isolator(
         Isolator with 1 dB insertion loss and 30 dB isolation:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
@@ -109,7 +108,6 @@ def circulator(
         3-port circulator:
 
         ```python
-        # mkdocs: render
         import matplotlib.pyplot as plt
         import numpy as np
         import sax
