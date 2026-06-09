@@ -6,7 +6,7 @@ dev:
 
 # bump version
 bump version="patch":
-    uvx --python 3.12 --from 'bver-cli==0.1.4' bver bump "{{ version }}"
+    uvx --python 3.12 --from 'bver-cli==0.1.6' bver bump "{{ version }}"
 
 dist:
   uv run python -m build --wheel
