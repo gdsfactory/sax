@@ -104,7 +104,7 @@ def _to_modelname(component_map: dict[str, str], component_fqn: str) -> str:
 
 def _get_component_map() -> dict[str, str]:
     try:
-        import gdsfactory as gf
+        import gdsfactory as gf  # type: ignore[reportMissingImports]
 
         pdk = gf.get_active_pdk()
     except Exception:  # noqa: BLE001
