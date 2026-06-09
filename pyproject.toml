@@ -30,9 +30,9 @@ lint = [
   "nb-clean>=4.0.1,<5.0.0",
   "nbstripout>=0.9.1,<0.10.0",
   "pre-commit>=4.5.1,<5.0.0",
-  "pyright==1.1.409",
+  "pyright==1.1.410",
   "ruff==0.15.13",
-  "ty==0.0.37"
+  "ty==0.0.46"
 ]
 test = [
   "hypothesis>=6.152.1,<7.0.0",
