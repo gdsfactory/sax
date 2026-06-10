@@ -99,6 +99,12 @@ readme = "README.md"
 requires-python = ">=3.11.0"
 version = "0.18.2"
 
+[project.optional-dependencies]
+cuda = [
+  "jax[cuda12]",
+  "cupy"
+]
+
 [[tool.bver.file]]
 kind = "python"
 src = "pyproject.toml"
