@@ -70,6 +70,21 @@ except ImportError:
         stacklevel=2,
     )
 
+try:
+    from .cuda import (
+        analyze_circuit_cuda,
+        analyze_instances_cuda,
+        evaluate_circuit_cuda,
+    )
+
+    circuit_backends["cuda"] = (
+        analyze_instances_cuda,
+        analyze_circuit_cuda,
+        evaluate_circuit_cuda,
+    )
+except ImportError:
+    pass
+
 
 __all__ = [
     "analyze_circuit",

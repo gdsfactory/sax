@@ -135,7 +135,7 @@ def val_backend(backend: Any) -> Backend:
         case "fg":
             backend = "filipsson_gunnar"
 
-    available_backends = ["filipsson_gunnar", "additive", "forward", "klu"]
+    available_backends = ["filipsson_gunnar", "additive", "forward", "klu", "cuda"]
     if backend not in available_backends:
         msg = (
             f"Invalid backend '{backend}'. "
@@ -146,7 +146,8 @@ def val_backend(backend: Any) -> Backend:
 
 
 Backend: TypeAlias = Annotated[
-    Literal["filipsson_gunnar", "additive", "forward", "klu"], val(val_backend)
+    Literal["filipsson_gunnar", "additive", "forward", "klu", "cuda"],
+    val(val_backend),
 ]
 """Available SAX backend algorithms for circuit simulation."""
 
