@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import warnings
 from collections.abc import Iterable, Iterator
 from functools import partial
 from typing import Any, Literal, cast, overload
@@ -198,6 +199,13 @@ def circuit(
         )
 
     # Legacy fallback for environments without kfnetlist (e.g. Python 3.11).
+    warnings.warn(
+        "Building a circuit without kfnetlist uses the deprecated legacy netlist "
+        "path. Install kfnetlist (Python >= 3.12) for the canonical native path; "
+        "this fallback will be removed once kfnetlist supports this Python.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     instance_models = _extract_instance_models(netlist)
     recnet = into_recnet(
         netlist,
@@ -541,6 +549,12 @@ def get_required_circuit_models(
         dependency_dag = _native_dag(cells, root, merged)
         _, required, _ = _find_missing_models(merged, dependency_dag)
         return required
+    warnings.warn(
+        "get_required_circuit_models without kfnetlist uses the deprecated legacy "
+        "netlist path; install kfnetlist (Python >= 3.12) for the native path.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     recnet = into_recnet(netlist)
     recnet = remove_unused_instances(recnet)
     dependency_dag = _create_dag(recnet, models, validate=True)

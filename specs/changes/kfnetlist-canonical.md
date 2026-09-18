@@ -34,11 +34,12 @@ kfnetlist 0.3.0 publishes `cp312-abi3` wheels and declares
 support without authorization to drop it, kfnetlist is declared as
 `kfnetlist>=0.3.0,<0.4.0; python_version >= '3.12'` and the native import is
 guarded. On 3.12+ it is the canonical path; on 3.11 (or any install without
-kfnetlist) `sax.circuit` uses the legacy adapter, which is documented by
-`src/tests/test_native_fallback.py`. Making the native path mandatory requires
-either upstream 3.11 wheels or an authorized SAX minimum-version bump. `uv lock`
-and `uv lock --check` pass. This remaining dual path is the main deviation from
-the "single native path" goal and should be revisited when kfnetlist ships 3.11.
+kfnetlist) `sax.circuit` uses the **deprecated** legacy adapter and emits a
+`DeprecationWarning`. `src/tests/test_native_fallback.py` covers that path.
+Making the native path mandatory requires either upstream 3.11 wheels or an
+authorized SAX minimum-version bump. `uv lock` and `uv lock --check` pass. This
+remaining deprecated dual path is the main deviation from the "single native
+path" goal and should be removed when kfnetlist ships 3.11.
 
 ### Directed connections versus undirected nets
 
@@ -358,10 +359,11 @@ suite including notebooks before declaring the migration implemented.
 
 ## Remaining work / decision needed
 
-The one explicit requirement not fully met is retiring the legacy path: it is
-retained as the no-kfnetlist fallback. This is blocked by kfnetlist 0.3.0's
-`Requires-Python >= 3.12` (no 3.11 wheels) combined with the requirement to
-preserve Python 3.11 support. Resolving it needs either (a) kfnetlist 3.11
-wheels, or (b) authorization to raise SAX's minimum Python to 3.12. Native
-rename/pruning transforms are also not yet migrated; circuit construction does
-not use the legacy transforms.
+The one explicit requirement not fully met is deleting the legacy path: it is
+retained as a **deprecated** no-kfnetlist fallback (it now emits a
+`DeprecationWarning`). This is blocked by kfnetlist 0.3.0's
+`Requires-Python >= 3.12` (no 3.11 wheels, verified for every PyPI release)
+combined with the requirement to preserve Python 3.11 support. Resolving it needs
+either (a) kfnetlist 3.11 wheels, or (b) authorization to raise SAX's minimum
+Python to 3.12. The canonical (kfnetlist-present) path never uses the legacy
+schema, transforms, or builder.
