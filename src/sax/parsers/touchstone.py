@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
-from hashlib import md5
+from io import StringIO
+from math import isqrt
 from pathlib import Path
-from tempfile import gettempdir
 from typing import cast, overload
 
 import numpy as np
@@ -26,11 +26,12 @@ def parse_touchstone(
     ports: Iterable[str] = (),
     convert_to_wavelength: bool = True,
 ) -> pd.DataFrame:
-    """Load S-parameters from a Lumerical .dat or .sparam file.
+    """Load Touchstone S-parameters with input/output-labeled table columns.
 
     Args:
-        content_or_filename: Content as string (if contains newlines), file path,
-            or file-like object with read() method.
+        content_or_filename: Touchstone content (if it contains newlines) or a
+            file path. Raw v1 text must contain complete full-matrix records;
+            the port count is inferred from the first record.
         ports: port (or port@mode) labels to use.
             if not given, ports will be labeled as 'o1', 'o2', ...
         convert_to_wavelength: if True, convert frequency to wavelength.
@@ -41,50 +42,68 @@ def parse_touchstone(
     Note:
         This function uses skrf.Network to parse the touchstone file.
     """
-    temppath = None
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
-        temppath = path = (
-            Path(gettempdir()).resolve()
-            / "sax"
-            / f"touchstone_{md5(content_or_filename.encode()).hexdigest()}.dat"
-        )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content_or_filename)
+        with StringIO(content_or_filename) as stream:
+            stream.name = _touchstone_name(content_or_filename)
+            ntwk = rf.Network(stream)
     else:
         path = Path(content_or_filename).resolve()
-
-    if not path.exists():
-        msg = f"Touchstone file {path!r} not found."
-        raise FileNotFoundError(msg)
-
-    try:
+        if not path.exists():
+            msg = f"Touchstone file {path!r} not found."
+            raise FileNotFoundError(msg)
         ntwk = rf.Network(str(path))
-        ports = np.array(list(ports))
-        if ports.shape[0] != ntwk.s.shape[-1] or ports.shape[0] != ntwk.s.shape[-2]:
-            msg = (
-                f"Length of ports list {ports} does not match "
-                f"smatrix dimension [{ntwk.s.shape[-2]}x{ntwk.s.shape[-1]}]."
-            )
-            raise ValueError(msg)
-        order = slice(None, None, -1) if convert_to_wavelength else slice(None)
-        coords = {}
-        if convert_to_wavelength:
-            coords["wl"] = sax.C_UM_S / ntwk.f[order]
-        coords["port_in"] = ports
-        coords["port_out"] = ports
-        xarr = xr.DataArray(ntwk.s[order], coords)
-        df = sax.to_df(xarr, target_name="s")
 
-        df["mode_in"] = [_get_mode(pm) for pm in df["port_in"].to_numpy()]
-        df["mode_out"] = [_get_mode(pm) for pm in df["port_out"].to_numpy()]
-        df["port_in"] = [_get_port(pm) for pm in df["port_in"].to_numpy()]
-        df["port_out"] = [_get_port(pm) for pm in df["port_out"].to_numpy()]
-        df["amp"] = np.abs(df["s"].to_numpy())
-        df["phi"] = np.angle(df.pop("s").to_numpy())
-    finally:
-        if temppath is not None:
-            temppath.unlink(missing_ok=True)
-    return df
+    labels = list(ports)
+    if not labels:
+        labels = [f"o{i + 1}" for i in range(ntwk.nports)]
+    if len(labels) != ntwk.nports or len(set(labels)) != len(labels):
+        msg = f"Expected {ntwk.nports} unique port labels, got {labels}."
+        raise ValueError(msg)
+    order = np.argsort(ntwk.f)
+    if convert_to_wavelength:
+        order = order[::-1]
+        coords = {"wl": sax.C_UM_S / ntwk.f[order]}
+    else:
+        coords = {"f": ntwk.f[order]}
+    # scikit-rf uses (output, input), whereas the tidy table labels directions.
+    coords["port_out"] = labels
+    coords["port_in"] = labels
+    xarr = xr.DataArray(ntwk.s[order], coords)
+    df = sax.to_df(xarr, target_name="s")
+    df["mode_in"] = [_get_mode(pm) for pm in df["port_in"].to_numpy()]
+    df["mode_out"] = [_get_mode(pm) for pm in df["port_out"].to_numpy()]
+    df["port_in"] = [_get_port(pm) for pm in df["port_in"].to_numpy()]
+    df["port_out"] = [_get_port(pm) for pm in df["port_out"].to_numpy()]
+    df["amp"] = np.abs(df["s"].to_numpy())
+    df["phi"] = np.angle(df.pop("s").to_numpy())
+    axis = "wl" if convert_to_wavelength else "f"
+    return df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]]
+
+
+def _touchstone_name(content: str) -> str:
+    """Infer a v1 full-matrix record's rank; v2 declares its own rank."""
+    lines = [line.split("!", 1)[0].strip() for line in content.splitlines()]
+    if any(line.lower().startswith("[version]") for line in lines):
+        return "input.ts"
+    count = 0
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split()
+        # A frequency starts an odd-length row; continuation rows contain pairs.
+        if count and len(fields) % 2:
+            break
+        try:
+            [float(field) for field in fields]
+        except ValueError as exc:
+            msg = "Invalid numeric Touchstone record."
+            raise ValueError(msg) from exc
+        count += len(fields)
+    n = isqrt(max(0, (count - 1) // 2))
+    if n < 1 or count != 1 + 2 * n * n:
+        msg = "Cannot infer port count from raw Touchstone v1 full-matrix data."
+        raise ValueError(msg)
+    return f"input.s{n}p"
 
 
 @overload
@@ -125,6 +144,7 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
         This function uses skrf.Network.write_touchstone to save the S-parameters.
 
     """
+    df = df.copy()
     in_amp_phi_format, in_wl_format = _validate_columns(df)
     modes = {*df["mode_in"], *df["mode_out"]}
     if in_amp_phi_format:
@@ -147,7 +167,7 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
     xarr = sax.to_xarray(df, target_names=["s"])
     nw = skrf.Network()
     nw.frequency = xarr.coords["f"].to_numpy()
-    nw.s = xarr.to_numpy()[:, :, :, 0]
+    nw.s = xarr.to_numpy()[:, :, :, 0].swapaxes(1, 2)
     nw.name = "sax touchstone" if path is None else Path(path).stem
     content: str = nw.write_touchstone(return_string=True) or ""
     if not content:

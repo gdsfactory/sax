@@ -38,21 +38,23 @@ conversion defaults; do not infer a single global policy.
 - `parse_lumerical_dat` parses text, paths, or file-like objects using Lark, emits
   `ExperimentalWarning`, and retains frequency by default (`convert_f_to_wl=False`).
 - `parse_touchstone` delegates to scikit-rf and defaults to wavelength conversion.
-  Current implementation requires explicit port labels matching matrix size despite
-  documenting automatic labels. Nonreciprocal direction mapping and raw-string
-  parsing have known discrepancies; see [open questions](open-questions.md).
+  Omitted labels become `o1`, `o2`, etc.; explicit labels must be unique and match
+  matrix size. Matrix output/input axes are mapped to the correctly labeled table
+  directions. Frequency-preserving reads provide `f`. Raw text is parsed in memory:
+  v1 full-matrix records supply the inferred port count, and v2 declares its count.
 - `write_touchstone(df, path=None)` returns text or writes a file and returns its
   resolved path. Missing extensions become `.sNp`; mismatched extensions warn.
 - `write_lumerical_dat` returns text or writes a path, but currently opens in append
   mode. Do not assume overwrite/idempotence or automatic temporary-file cleanup.
-- Writer normalization can mutate the provided DataFrame. Pass a copy if the
-  caller needs isolation. Neither writer is specified as a lossless preservation
+- Touchstone writing copies its input DataFrame; Lumerical normalization can still
+  mutate it. Neither writer is specified as a lossless preservation
   mechanism for all metadata, labels, reference impedances, or mode information.
 
 Evidence: [`parsers/lumerical.py`](../src/sax/parsers/lumerical.py),
 [`parsers/touchstone.py`](../src/sax/parsers/touchstone.py) (`_validate_columns`).
 [`test_imports.py`](../src/tests/test_imports.py) checks imports, not parser numerical
-round trips. Asymmetric Touchstone inspection is recorded in open questions.
+round trips. `src/tests/test_touchstone.py` verifies asymmetric import/export
+independently, raw v1/v2 text, default labels, validation, and frequency reads.
 
 ## Grid conversion and interpolation
 

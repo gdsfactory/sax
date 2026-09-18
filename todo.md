@@ -13,7 +13,7 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
 
 ## Highest priority
 
-- [ ] **Correct Touchstone input/output direction mapping.** Reproduced: importing
+- [x] **Correct Touchstone input/output direction mapping.** Reproduced: importing
   an asymmetric fixture reverses `S21` and `S12`. Check the writer independently
   against an external fixture; a self-round-trip could conceal matching errors.
   Source: `src/sax/parsers/touchstone.py`.
@@ -31,6 +31,9 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
   Test `(N, 1)` with `(1, M)`, scalar/array mixtures, and incompatible shapes.
   Source: `src/sax/backends/klu.py`.
 
+Touchstone resolution: `src/tests/test_touchstone.py` plus smoke: **13 passed**.
+Reader/writer directions are tested independently; related input fixes share a commit.
+
 ## Other correctness and API issues
 
 - [ ] **Honor custom modes in dense multimode conversion.** Reproduced:
@@ -40,13 +43,13 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
   dense sums duplicate coordinates, while conversion to dictionary keeps the last
   value. Decide whether to reject duplicates or reduce them consistently; add
   numerical conversion tests. Source: `src/sax/s.py`.
-- [ ] **Repair remaining Touchstone input paths.** Source:
+- [x] **Repair remaining Touchstone input paths.** Source:
   `src/sax/parsers/touchstone.py`.
-  - [ ] Implement documented default port labels or explicitly require labels.
+  - [x] Implement documented default port labels or explicitly require labels.
     Reproduced: omitted labels currently raise an error.
-  - [ ] Support raw Touchstone v1 text without losing its port-count information.
+  - [x] Support raw Touchstone v1 text without losing its port-count information.
     Reproduced: the temporary `.dat` extension causes scikit-rf to reject it.
-  - [ ] Test and repair `convert_to_wavelength=False`. Inspected: the frequency
+  - [x] Test and repair `convert_to_wavelength=False`. Inspected: the frequency
     coordinate is omitted during xarray construction.
 - [ ] **Handle zero-variance neural-fit columns.** Inspected: feature/target
   normalization divides by zero for constant columns. Decide rejection versus

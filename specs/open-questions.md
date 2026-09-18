@@ -35,7 +35,12 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 KLU batch-shape selection and forward BFS limitations are documented in
 [backends](backends.md); neither has comprehensive regression coverage here.
 
-## Touchstone interoperability
+## Touchstone interoperability — resolved
+
+Resolved by the Touchstone remediation commit: correct matrix direction, default
+labels, frequency coordinates, and in-memory raw v1/v2 parsing. Regression evidence:
+`src/tests/test_touchstone.py` (independent asymmetric writer/reader checks).
+The observations below describe the original baseline, not current behavior.
 
 In [`parsers/touchstone.py`](../src/sax/parsers/touchstone.py):
 
