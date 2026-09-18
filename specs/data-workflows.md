@@ -138,3 +138,12 @@ later dictionaries precedence; `update_settings` updates existing leaf keys, not
 arbitrary new global parameters. Preserve wrapped model signatures where supported.
 Tests: [`01_utils.ipynb`](../src/tests/nbs/01_utils.ipynb). Do not treat utility
 renaming or flattening as a guaranteed lossless transformation of every netlist field.
+
+## Native copying and serialization
+
+Placed dictionaries/JSON are deserialized as `PlacedNetlist`; ordinary native data
+uses `Netlist`. `native.copy_netlist` reconstructs using the source's concrete type
+and preserves nested settings/info, arrays, topology, cell references, and geometry.
+Circuit preparation stores Python-only legacy settings outside the native object;
+pure native adapters/loaders retain native JSON-compatible storage constraints.
+Evidence: `src/tests/test_native_settings.py`.

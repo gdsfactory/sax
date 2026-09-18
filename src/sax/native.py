@@ -31,9 +31,12 @@ from kfnetlist import (
     Netlist,
     NetlistPort,
     PlacedNetlist,
+    Placement,
     PortArrayRef,
     PortRef,
 )
+
+from .saxtypes.netlist import val_placement
 
 if TYPE_CHECKING:
     pass
@@ -54,6 +57,9 @@ __all__ = [
 
 NativeHierarchy = dict[str, Netlist]
 """Mapping of cell name to native kfnetlist netlist (SAX's canonical hierarchy)."""
+
+InstanceSettings = dict[str, dict[str, Any]]
+HierarchySettings = dict[str, InstanceSettings]
 
 
 def is_native(obj: object) -> bool:
@@ -118,7 +124,12 @@ def _scan_legacy_arrays(flat: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
 
 
 def _add_legacy_instance(
-    nl: Netlist, name: str, inst: Any, sizes: Mapping[str, tuple[int, int]]
+    nl: Netlist,
+    name: str,
+    inst: Any,
+    sizes: Mapping[str, tuple[int, int]],
+    placement: Mapping[str, Any],
+    settings_table: InstanceSettings | None,
 ) -> None:
     if isinstance(inst, str):
         component, settings, info = inst, {}, {}
@@ -129,12 +140,15 @@ def _add_legacy_instance(
         component = str(inst["component"])
         settings = dict(inst.get("settings") or {})
         info = dict(inst.get("info") or {})
+        settings.update(info)
     else:
         msg = f"Unsupported legacy instance {name!r}: {inst!r}."
         raise TypeError(msg)
     na, nb = sizes.get(name, (1, 1))
-    nl.create_inst(
-        name,
+    if settings_table is not None:
+        settings_table[name] = settings
+        settings, info = {}, {}
+    kwargs = dict(
         kcl="",
         component=component,
         settings=settings,
@@ -142,6 +156,19 @@ def _add_legacy_instance(
         nb=nb,
         info=info,
     )
+    if isinstance(nl, PlacedNetlist):
+        normalized = val_placement(placement)
+        kwargs["cell"] = (
+            str(inst.get("cell", component)) if isinstance(inst, Mapping) else component
+        )
+        kwargs["placement"] = Placement(
+            x=normalized["x"],
+            y=normalized["y"],
+            orientation=float(normalized["rotation"]),
+            mirror=normalized["mirror"],
+            bbox={"left": 0.0, "bottom": 0.0, "right": 0.0, "top": 0.0},
+        )
+    nl.create_inst(name, **kwargs)
 
 
 def _native_member(endpoint: str) -> NetlistPort | PortRef | PortArrayRef:
@@ -153,14 +180,29 @@ def _native_member(endpoint: str) -> NetlistPort | PortRef | PortArrayRef:
     return PortRef(instance=instance, port=port)
 
 
-def from_legacy_flat(flat: Mapping[str, Any]) -> Netlist:
+def from_legacy_flat(
+    flat: Mapping[str, Any],
+    *,
+    settings_table: InstanceSettings | None = None,
+) -> Netlist:
     """Adapt one legacy SAX flat netlist into a native kfnetlist netlist."""
-    nl = Netlist()
+    placed = bool(flat.get("placements")) or any(
+        isinstance(inst, Mapping) and "cell" in inst
+        for inst in flat.get("instances", {}).values()
+    )
+    nl = PlacedNetlist() if placed else Netlist()
     for name in flat.get("ports") or {}:
         nl.create_port(str(name))
     sizes = _scan_legacy_arrays(flat)
     for name, inst in (flat.get("instances") or {}).items():
-        _add_legacy_instance(nl, str(name), inst, sizes)
+        _add_legacy_instance(
+            nl,
+            str(name),
+            inst,
+            sizes,
+            (flat.get("placements") or {}).get(name, {}),
+            settings_table,
+        )
     for src, tgt in (flat.get("connections") or {}).items():
         nl.create_net(_native_member(str(src)), _native_member(str(tgt)))
     for net in flat.get("nets") or []:
@@ -179,6 +221,8 @@ def from_legacy_recursive(recnet: Mapping[str, Any]) -> NativeHierarchy:
 
 
 def _looks_native(data: Mapping[str, Any]) -> bool:
+    if isinstance(data.get("ports"), list):
+        return True
     instances = data.get("instances")
     if not isinstance(instances, Mapping) or not instances:
         return False
@@ -188,10 +232,21 @@ def _looks_native(data: Mapping[str, Any]) -> bool:
     )
 
 
+def deserialize_netlist(data: Mapping[str, Any]) -> Netlist:
+    """Decode native data without dropping placed-instance identity/geometry."""
+    placed = any(
+        "cell" in inst or "placement" in inst
+        for inst in data.get("instances", {}).values()
+    )
+    factory = PlacedNetlist if placed else Netlist
+    return factory.from_dict(dict(data))
+
+
 def to_hierarchy(
     netlist: object,
     *,
     top_level_name: str = "top_level",
+    settings_table: HierarchySettings | None = None,
 ) -> tuple[NativeHierarchy, str]:
     """Normalize supported input into ``(cells, root)``."""
     if is_native(netlist):
@@ -208,15 +263,26 @@ def to_hierarchy(
         except json.JSONDecodeError:
             msg = "Native string input must be JSON-encoded kfnetlist data."
             raise TypeError(msg) from None
-        return to_hierarchy(decoded, top_level_name=top_level_name)
+        return to_hierarchy(
+            decoded,
+            top_level_name=top_level_name,
+            settings_table=settings_table,
+        )
 
     if isinstance(netlist, Mapping):
         data = dict(netlist)
         if "instances" in data:
             if _looks_native(data):
-                return {top_level_name: Netlist.from_dict(data)}, top_level_name
+                return {top_level_name: deserialize_netlist(data)}, top_level_name
+            instance_settings = {} if settings_table is not None else None
+            if settings_table is not None:
+                settings_table[top_level_name] = instance_settings
             return (
-                {top_level_name: from_legacy_flat(data)},
+                {
+                    top_level_name: from_legacy_flat(
+                        data, settings_table=instance_settings
+                    )
+                },
                 top_level_name,
             )
 
@@ -226,9 +292,12 @@ def to_hierarchy(
             if isinstance(flat, Netlist):
                 cells[key] = flat
             elif isinstance(flat, Mapping) and _looks_native(flat):
-                cells[key] = Netlist.from_dict(dict(flat))
+                cells[key] = deserialize_netlist(flat)
             elif isinstance(flat, Mapping):
-                cells[key] = from_legacy_flat(flat)
+                instance_settings = {} if settings_table is not None else None
+                if settings_table is not None:
+                    settings_table[key] = instance_settings
+                cells[key] = from_legacy_flat(flat, settings_table=instance_settings)
             else:
                 msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
                 raise TypeError(msg)
@@ -367,7 +436,7 @@ def missing_model_message(inst: Any, path: str) -> str:  # noqa: ANN401
 
 def copy_netlist(nl: Netlist) -> Netlist:
     """Return an independent native copy of *nl*."""
-    return Netlist.from_dict(nl.to_dict())
+    return type(nl).from_dict(nl.to_dict())
 
 
 def lower_bindings(

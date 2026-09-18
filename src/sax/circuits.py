@@ -157,9 +157,8 @@ def circuit(
 
     if _is_native_json(netlist):
         netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
-    instance_models = _extract_instance_models(netlist)
-    prepared = _replace_callable_instances(netlist)
-    merged_models: sax.Models = {**(models or {}), **instance_models}
+    merged_models: sax.Models = dict(models or {})
+    prepared = _replace_callable_instances(netlist, merged_models)
     return _circuit_native(
         prepared,
         merged_models,
@@ -172,24 +171,43 @@ def circuit(
     )
 
 
-def _replace_callable_instances(netlist: Any) -> Any:  # noqa: ANN401
-    """Replace callable/partial instances with their component name strings."""
+def _replace_callable_instances(netlist: Any, models: sax.Models) -> Any:  # noqa: ANN401
+    """Bind direct callables per instance and preserve keyword-partial settings."""
+    reserved = set(models)
     if isinstance(netlist, dict):
-        if "instances" in netlist:
-            out = dict(netlist)
-            replaced = {}
-            for name, inst in netlist["instances"].items():
-                if callable(inst) and not isinstance(inst, str):
-                    f = inst
-                    while isinstance(f, partial):
-                        f = f.func
-                    replaced[name] = f.__name__
-                else:
-                    replaced[name] = inst
-            out["instances"] = replaced
-            return out
-        return {k: _replace_callable_instances(v) for k, v in netlist.items()}
-    return netlist
+        reserved.update(netlist)
+
+    def replace(data: Any) -> Any:  # noqa: ANN401
+        if not isinstance(data, dict):
+            return data
+        if "instances" not in data:
+            return {key: replace(value) for key, value in data.items()}
+        instances = {}
+        for name, inst in data["instances"].items():
+            if not callable(inst):
+                instances[name] = inst
+                continue
+            model = inst
+            settings: sax.Settings = {}
+            while isinstance(model, partial):
+                if model.args:
+                    msg = (
+                        "SAX circuits don't support partials with positional arguments."
+                    )
+                    raise ValueError(msg)
+                settings = {**model.keywords, **settings}
+                model = model.func
+            index = len(models)
+            key = f"_sax_callable_{index}"
+            while key in reserved:
+                index += 1
+                key = f"_sax_callable_{index}"
+            reserved.add(key)
+            models[key] = model
+            instances[name] = {"component": key, "settings": settings}
+        return {**data, "instances": instances}
+
+    return replace(netlist)
 
 
 def _is_native_json(netlist: object) -> bool:
@@ -241,7 +259,12 @@ def _circuit_native(
     probes: dict[str, str] | None,
     on_internal_port: Literal["warn", "ignore", "as_probes"],
 ) -> tuple[sax.Model, sax.CircuitInfo]:
-    cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
+    python_settings: native.HierarchySettings = {}
+    cells, root = native.to_hierarchy(
+        netlist,
+        top_level_name=top_level_name,
+        settings_table=python_settings,
+    )
 
     models = dict(models or {})
     dependency_dag = _native_dag(cells, root, models, require_models=True)
@@ -285,6 +308,9 @@ def _circuit_native(
         nl = cells[model_name]
         instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
         for name, inst in instances.items():
+            saved = python_settings.get(model_name, {}).get(_strip_array_index(name))
+            if saved is not None:
+                inst["settings"] = saved
             key = bindings.get(name)
             if key is None:
                 msg = (
@@ -405,10 +431,13 @@ def get_required_circuit_models(
         # Result: ["directional_coupler"]
         ```
     """
-    instance_models = _extract_instance_models(netlist)
-    prepared = _replace_callable_instances(netlist)
-    cells, root = native.to_hierarchy(prepared, top_level_name=top_level_name)
-    merged: sax.Models = {**(models or {}), **instance_models}
+    merged: sax.Models = dict(models or {})
+    prepared = _replace_callable_instances(netlist, merged)
+    cells, root = native.to_hierarchy(
+        prepared,
+        top_level_name=top_level_name,
+        settings_table={},
+    )
     dependency_dag = _native_dag(cells, root, merged)
     _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
@@ -469,8 +498,13 @@ def _flat_circuit(
         for name, inst in instances.items()
     }
     for name, settings in netlist_settings.items():
-        if "placement" in settings:
-            settings["placement"] = sax.into[sax.Placement](placements.get(name, {}))
+        if (
+            "placement" in model_settings[name]
+            and _strip_array_index(name) in placements
+        ):
+            settings["placement"] = sax.into[sax.Placement](
+                placements[_strip_array_index(name)]
+            )
     default_settings = merge_dicts(model_settings, netlist_settings)
     default_settings = {_strip_array_index(k): v for k, v in default_settings.items()}
     analyzed = analyze_fn(dummy_instances, all_nets, ports)
@@ -691,33 +725,6 @@ def _enforce_return_type(model: sax.Model, return_type: Any) -> sax.Model:  # no
         msg = f"Invalid return_type {return_type!r}; expected SDict, SCoo, or SDense."
         raise ValueError(msg)
     return stype(model)
-
-
-def _extract_instance_models(netlist: sax.AnyNetlist) -> sax.Models:
-    if _is_netlist(netlist):
-        callable_instances = [f for f in netlist["instances"].values() if callable(f)]
-        models = {}
-        for f in callable_instances:
-            while isinstance(f, partial):
-                f = f.func
-            models[f.__name__] = f
-        return models
-
-    if _is_recursive_netlist(netlist):
-        models = {}
-        for net in netlist.values():
-            models.update(_extract_instance_models(cast(sax.Netlist, net)))
-        return models
-
-    return {}
-
-
-def _is_netlist(netlist: sax.AnyNetlist) -> bool:
-    return isinstance(netlist, dict) and "instances" in netlist and "ports" in netlist
-
-
-def _is_recursive_netlist(netlist: sax.AnyNetlist) -> bool:
-    return isinstance(netlist, dict) and not _is_netlist(netlist)
 
 
 def _validate_dag(dag: nx.DiGraph) -> nx.DiGraph:

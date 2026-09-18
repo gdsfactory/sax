@@ -54,7 +54,7 @@ similar historical checks passed.
 | Stage | Outcome | Status | Verification |
 | --- | --- | --- | --- |
 | 1 | Backend scope and identity/API boundaries settled | Complete | 80 focused tests passed |
-| 2 | Input settings, placements, and native identities preserved | Not started | Not run |
+| 2 | Input settings, placements, and native identities preserved | Complete | 55 acceptance + 51 regression tests passed |
 | 3 | Hierarchy, transforms, probes, and topology corrected | Not started | Not run |
 | 4 | PIC workflows and real extraction validated | Not started | Not run |
 | 5 | Compatibility evidence, documentation, and cleanup complete | Not started | Not run |
@@ -104,18 +104,18 @@ claiming they pass. **Stage commit:** this stage's commit includes this record.
 **Outcome:** adaptation and serialization preserve supported simulation inputs
 without forcing Python-only values into native JSON storage.
 
-- [ ] Preserve keyword partial arguments as per-instance settings and reject
+- [x] Preserve keyword partial arguments as per-instance settings and reject
   positional partials (**1**). Cover distinct partials of the same function and
   explicit evaluation overrides in `_replace_callable_instances`.
-- [ ] Restore the legacy `info`-to-settings merge and its conflict precedence
+- [x] Restore the legacy `info`-to-settings merge and its conflict precedence
   (**2**); retain native `info` as metadata.
-- [ ] Keep JAX/NumPy arrays, complex values, and other supported non-JSON model
+- [x] Keep JAX/NumPy arrays, complex values, and other supported non-JSON model
   settings in SAX-owned tables outside native topology serialization (**4**).
   Preserve defaults, overrides, broadcasting, JIT, and real-objective gradients.
-- [ ] Carry legacy placement data into the native path with existing normalization
+- [x] Carry legacy placement data into the native path with existing normalization
   semantics (**3**). A model given `x=7` must receive `x=7`, not the default zero.
   Preserve supplied placed geometry without requiring it to affect simulation.
-- [ ] Deserialize placed dictionaries/JSON as the correct native type (**10**)
+- [x] Deserialize placed dictionaries/JSON as the correct native type (**10**)
   and provide independent copying that preserves type and data (**11**).
   Exercise ordinary and placed netlists, nested settings, arrays, metadata,
   cell references, geometry, and input isolation. Keep the helper replaceable by
@@ -125,7 +125,12 @@ without forcing Python-only values into native JSON storage.
 and pass after correction. Native objects and their supported serialized forms
 produce equivalent asymmetric circuit results. Copies can be transformed without
 changing the originals; JIT/gradient checks use real objectives where relevant.
-**Evidence:** not run. **Stage commit:** pending execution and verification.
+**Evidence:** existing `.venv`: native settings/input/identity + smoke **55 passed**
+(19.34s); broadcasting, legacy netlist/circuit, and probes **51 passed** (29.81s).
+New tests include trace-time construction gradients, independent same-named callable
+bindings, asymmetric placed JSON fallback, and ordinary/placed copy isolation.
+Formatting and whitespace checks passed. Hooks remain deferred to stage 5's
+quality cleanup. **Stage commit:** this stage's commit includes this record.
 
 ## Stage 3 — Correct hierarchy, transforms, probes, and lowering
 

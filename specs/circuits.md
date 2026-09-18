@@ -65,8 +65,7 @@ diagnostics, arrays, probes, settings, JIT, and gradients.
 
 Array instances expand to `name<column.row>`. References can infer/patch array
 extents. Evaluation uses the base name's settings for every element; this is not
-independent per-element parameter addressing. Array patching can mutate the input
-before subsequent copying: do not assume the whole constructor is side-effect-free.
+independent per-element parameter addressing. Array extent inference and expansion do not mutate caller input.
 
 `flatten_netlist` separately inlines children using `~` by default. Both
 `connections` and `nets` endpoints are rewritten, including links within one child,
@@ -83,8 +82,10 @@ Cell-specific `models[cell]` overrides precede qualified factory bindings
 that factory appears in only one library in the supplied hierarchy. Conflicting
 bare bindings raise a diagnostic instead of silently selecting one library.
 No suffix stripping is performed; `coupler2` is an independent factory name.
-Explicit callable instances are instance-local bindings (adaptation coverage is
-tracked in `work.md`). Resolution then follows a concrete child `cell`, with
+Explicit callable instances are instance-local bindings. Their adapter uses
+collision-avoiding internal model keys, so same-named Python functions do not
+overwrite one another or a separately supplied factory model. Keyword partial
+arguments become per-instance settings; positional partials are rejected. Resolution then follows a concrete child `cell`, with
 exact component-name fallback for legacy/plain hierarchy input. Missing-model
 errors identify the instance path, library, factory, cell, and attempted keys.
 
@@ -109,6 +110,13 @@ For ordinary instances, effective parameter precedence is:
 4. Explicit instance/nested call-time settings, which override globals.
 
 Thus `model(wl=wl, a={"length": 30})` distributes `wl` while overriding `a`'s length.
+Legacy settings (including `info` merged over explicit instance settings) are
+retained in per-cell/per-instance Python tables during circuit preparation, outside
+native JSON serialization. Arrays, complex values, and traced numerical settings
+therefore remain usable. Native `info` stays metadata. Placement is passed to
+models exposing a `placement` parameter when placed data is present; legacy
+coordinates use x+dx, y+dy, rounded rotation modulo 360, and boolean mirror.
+
 Unknown instance netlist keys are filtered, but unknown explicit call-time instance
 keys may reach the model and raise an error. Do not assume root netlist `settings`
 are automatically applied: `_flat_circuit` builds defaults from instances/models.
