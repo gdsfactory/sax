@@ -48,7 +48,8 @@ KLU and Filipsson-Gunnar solve such wiring; forward-only does not generally do s
 
 - [`pyproject.toml`](../pyproject.toml) declares Python >=3.11 and JAX
   >=0.6.0,<0.10.0 at the baseline revision. The lockfile is a separate reproducibility
-  surface and currently needs reconciliation; see [verification](verification.md).
+  surface; the tracked lockfile passes `uv lock --check` following its addition
+  in `9e1e73b`. See [verification](verification.md).
 - JIT/autodiff claims apply to particular numerical paths, not every public API.
   File I/O, pandas/xarray preparation, NetworkX analysis, and symbolic code generation
   are host-side operations. Prefer building topology outside JAX transformations.

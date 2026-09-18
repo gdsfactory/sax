@@ -66,9 +66,14 @@ handling:
 1000000000 0 0 0.5 0 0.25 0 0 0
 ```
 
-## Tooling
+## Tooling — resolved
 
-`uv run --locked --python 3.12 --no-default-groups --group test ...` refused the
+The tracked lockfile was reconciled in `9e1e73b` before the TODO remediation work.
+`uv lock --check` and a locked smoke run now pass; no additional dependency
+resolution changes were necessary. README installation guidance now uses Python
+>=3.11 and repository dependency groups (Python 3.12 for development).
+
+Historical observation: `uv run --locked --python 3.12 --no-default-groups --group test ...` refused the
 baseline because `uv.lock` needs updating. Verification used `--frozen` instead.
 **Do not silently regenerate the lockfile during a documentation/spec update.**
 Reconcile it as an explicit dependency change and rerun the relevant checks.

@@ -123,7 +123,7 @@ Those are the basics. For more info, check out the **full**
 
 ## Installation
 
-You can install SAX with pip:
+SAX requires Python >=3.11. Install it with pip:
 
 ```sh
 pip install sax
@@ -132,12 +132,19 @@ pip install sax
 KLU is the default circuit backend. Its solver package `klujax` is a required
 SAX dependency and is installed automatically; there is no missing-KLU fallback.
 
-If you want to be able to run all the example notebooks, you'll need python>=3.10 and
-you should install the development version of SAX:
+For development and the example notebooks, clone the repository and install its
+locked dependency groups with [uv](https://docs.astral.sh/uv/). Python 3.12 is used
+for the development environment and optional netlist test fixtures:
 
 ```sh
-pip install 'sax[dev]'
+git clone https://github.com/gdsfactory/sax.git
+cd sax
+uv sync --locked --python 3.12 --dev
 ```
+
+Development dependencies are repository dependency groups, not a `sax[dev]` extra.
+Use `just smoke` for fast numerical checks in the installed environment and
+`just test` for the full suite (including notebook kernel setup).
 
 ## License
 

@@ -107,11 +107,13 @@ Reader/writer directions are tested independently; related input fixes share a c
   - [x] Define `reciprocal` behavior for conflicting directional entries.
     Inspected: it swaps conflicting values instead of enforcing equality.
     Source: `src/sax/s.py`.
-- [ ] **Reconcile dependency declarations and the lockfile.** Reproduced:
+- [x] **Reconcile dependency declarations and the lockfile.** Reproduced:
   `uv run --locked` refuses the current metadata/lock combination. Regenerate only
   as an explicit dependency change, inspect the resolution diff, and rerun checks.
   Align README installation guidance with Python requirements/dependency groups.
   Sources: `pyproject.toml`, `uv.lock`, `README.md`.
+  Already reconciled in `9e1e73b`: `uv lock --check` passes, locked smoke: **4 passed**.
+  No dependency churn needed; corrected README Python/group installation guidance.
 - [ ] **Close verification gaps.** Add focused tests for parser directionality,
   fitting degeneracies, batch broadcasting, and backend restrictions as the above
   issues are addressed. Run the optional kfnetlist suite in an environment with

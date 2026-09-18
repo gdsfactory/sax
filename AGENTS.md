@@ -27,8 +27,9 @@ chat, not an approval ceremony or a new spec file.
   limitations. Prefer focused pytest checks first, then relevant regression checks.
 - Normal targeted command:
   `uv run --locked --no-default-groups --group test pytest <test-path> -q`.
-  The initial baseline lockfile was stale: do not silently regenerate it. Explicitly
-  report use of `--frozen` or an existing environment and what that does not verify.
+  The tracked lockfile now passes `uv lock --check`. Do not silently regenerate it
+  during unrelated work. Use `just smoke` for fast checks without synchronization;
+  report use of an existing environment and any verification limits.
 - `just test` includes notebook execution and user-kernel setup. Inspect `justfile`
   first: `just dev` clears `.venv`; `just clean` is destructive. Do not run them as
   routine inspection commands. Lint/type tooling is in `.pre-commit-config.yaml`

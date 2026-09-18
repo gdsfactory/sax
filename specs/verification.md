@@ -44,8 +44,12 @@ uv run --locked --python 3.12 --no-default-groups --group test \
 At baseline this failed before testing because the lockfile was stale. The actual
 successful run used `--frozen` in place of `--locked` (use the existing lock without
 resolving updates). Report that distinction; it does not prove the current declared
-dependency set resolves. Once installed, `.venv/bin/python -m pytest ...` avoids
-implicit environment synchronization.
+dependency set resolves. The subsequently tracked lockfile (`9e1e73b`) now passes
+`uv lock --check`; remediation also ran
+`uv run --locked --inexact --no-default-groups --group test pytest src/tests/test_smoke.py -q`
+(**4 passed**). `--inexact` retained already installed optional fixture/kernel tools.
+No lock changes were necessary in remediation. Once installed,
+`.venv/bin/python -m pytest ...` avoids implicit environment synchronization.
 
 For a focused change, substitute the relevant file/node IDs from the specs. The
 pytest configuration in [`pyproject.toml`](../pyproject.toml) collects `src/tests`.
