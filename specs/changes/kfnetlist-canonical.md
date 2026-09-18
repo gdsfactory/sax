@@ -9,7 +9,7 @@ models are resolved before descending into a distinct ``PlacedInstance.cell``
 so the ``forward`` backend still sees declared signal direction; native input
 without direction errors for that backend. SAX inspected at `e23d710`; local
 kfnetlist at `7379b68cbed3a7fe01bc11505d789fb53bae6cb9`. Implementation
-checklist: [`todo.md`](../../todo.md). Existing contracts remain in
+follow-up work: [`work.md`](../../work.md). Existing contracts remain in
 [circuits](../circuits.md) and [data workflows](../data-workflows.md).
 
 ## Implementation status (this checkout)
@@ -285,10 +285,11 @@ error or opt-in decomposition policy, never accidental loss of analytical physic
 
 ## Rollout and decisions required
 
-The checklist in `todo.md` sequences characterization, native hierarchy adoption,
-legacy-to-native input conversion, resolution, transforms, and completing the
-canonical build path. It is not a plan to improve the existing kfnetlist-to-SAX
-adapter first. Retire the old internal schema and conversion path; any retained
+The original migration checklist has been retired after review; outstanding
+fixes, decisions, and acceptance checks are tracked in [`work.md`](../../work.md).
+Implementation is paused pending the user's instruction to resume. The migration
+targets the native build path, not the existing kfnetlist-to-SAX dictionary adapter.
+Retire the old internal schema and conversion path; any retained
 legacy export/helper APIs must be isolated and documented. No blanket flattening:
 it would remove the analytical model boundaries this work is intended to protect.
 

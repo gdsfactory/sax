@@ -5,6 +5,20 @@ read the relevant contract, state the intended change and verification, implemen
 then update specs/tests together. A small clear change needs only a short plan in
 chat, not an approval ceremony or a new spec file.
 
+## work.md
+
+Treat `work.md` as a living plan that I can later give you as an execution goal.
+Organize it into ordered stages with a clear outcome, task checkboxes, and
+verification criteria. Distinguish agreed decisions from open questions, and
+preserve relevant findings when reorganizing it. Editing the plan does not by
+itself authorize implementation.
+
+While executing the goal, keep `work.md` current with progress, decisions,
+verification results, and remaining work. Check off tasks only when their stated
+outcome is achieved; record failed or unrun checks explicitly. After completing
+each stage, commit the updated `work.md` together with that stage's related
+changes. This is authorization for those stage commits; exclude unrelated work.
+
 ## Specs and skills
 
 - Start at [`specs/README.md`](specs/README.md); load only relevant subsystem specs.
