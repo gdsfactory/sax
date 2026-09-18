@@ -163,6 +163,9 @@ def from_legacy_flat(flat: Mapping[str, Any]) -> Netlist:
         nl.create_net(_native_member(str(src)), _native_member(str(tgt)))
     for net in flat.get("nets") or []:
         nl.create_net(_native_member(str(net["p1"])), _native_member(str(net["p2"])))
+    for bundle in (flat.get("routes") or {}).values():
+        for src, tgt in (bundle.get("links") or {}).items():
+            nl.create_net(_native_member(str(src)), _native_member(str(tgt)))
     for name, endpoint in (flat.get("ports") or {}).items():
         nl.create_net(NetlistPort(name=str(name)), _native_member(str(endpoint)))
     return nl
@@ -360,3 +363,236 @@ def placements(nl: Netlist) -> dict[str, dict[str, Any]]:
             "mirror": bool(placement.mirror),
         }
     return result
+
+
+# ---------------------------------------------------------------------------
+# Probe and internal-port handling on lowered topology tables
+# ---------------------------------------------------------------------------
+
+
+def _endpoint_instance(endpoint: str) -> str:
+    return endpoint.split(",")[0]
+
+
+def handle_internal_ports(
+    instances: Mapping[str, Any],
+    nets: list[dict[str, str]],
+    ports: dict[str, str],
+    on_internal_port: str,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Drop or convert external ports that target internal connection nodes."""
+    import warnings
+
+    internal: set[str] = set()
+    for net in nets:
+        internal.add(net["p1"])
+        internal.add(net["p2"])
+    probes: dict[str, str] = {}
+    kept: dict[str, str] = {}
+    for name, endpoint in ports.items():
+        if endpoint not in internal:
+            kept[name] = endpoint
+            continue
+        if on_internal_port == "as_probes":
+            warnings.warn(
+                f"Port '{name}' maps to internal node '{endpoint}' which is "
+                "already part of a connection. It will be interpreted as a probe "
+                f"(creating '{name}_fwd' and '{name}_bwd' ports).",
+                stacklevel=2,
+            )
+            probes[name] = endpoint
+        elif on_internal_port == "warn":
+            warnings.warn(
+                f"Port '{name}' maps to internal node '{endpoint}' which is "
+                "already part of a connection. It will be dropped. Use the "
+                "probes= argument of circuit() to explicitly create measurement "
+                "probes.",
+                stacklevel=2,
+            )
+    return kept, probes
+
+
+def expand_probes_tables(
+    instances: dict[str, dict[str, Any]],
+    nets: list[dict[str, str]],
+    ports: dict[str, str],
+    probes: Mapping[str, str],
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str]]:
+    """Insert ideal probes into lowered topology tables.
+
+    ``_fwd`` measures the wave travelling into the targeted instance port.
+    """
+    if not probes:
+        return instances, nets, ports
+    instances = dict(instances)
+    ports = dict(ports)
+    nets = list(nets)
+    for probe_name, target in probes.items():
+        fwd_port = f"{probe_name}_fwd"
+        bwd_port = f"{probe_name}_bwd"
+        if fwd_port in ports or bwd_port in ports:
+            msg = (
+                f"Probe '{probe_name}' would create ports '{fwd_port}'/"
+                f"'{bwd_port}' which conflict with existing ports."
+            )
+            raise ValueError(msg)
+        probe_instance = f"_probe_{probe_name}"
+        if probe_instance in instances:
+            msg = (
+                f"Probe instance name '{probe_instance}' conflicts with an "
+                "existing instance."
+            )
+            raise ValueError(msg)
+
+        in_side: str | None = None
+        for i, net in enumerate(nets):
+            if net["p1"] == target:
+                in_side = net["p2"]
+                nets.pop(i)
+                break
+            if net["p2"] == target:
+                in_side = net["p1"]
+                nets.pop(i)
+                break
+        if in_side is None:
+            # Boundary or unconnected: route the existing external port through.
+            for pname, endpoint in ports.items():
+                if endpoint == target:
+                    in_side = f"{probe_instance},in"
+                    ports[pname] = in_side
+                    break
+
+        instances[probe_instance] = {"component": "_ideal_probe"}
+        if in_side is not None and in_side != f"{probe_instance},in":
+            nets.append({"p1": in_side, "p2": f"{probe_instance},in"})
+        nets.append({"p1": f"{probe_instance},out", "p2": target})
+        ports[fwd_port] = f"{probe_instance},tap_fwd"
+        ports[bwd_port] = f"{probe_instance},tap_bwd"
+    return instances, nets, ports
+
+
+def plan_hierarchical_probes(
+    cells: Mapping[str, Netlist],
+    root: str,
+    models: Mapping[str, Any],
+    probes: Mapping[str, str],
+) -> tuple[dict[str, str], dict[str, dict[str, str]], dict[str, list[tuple[str, str]]]]:
+    """Split probes into root probes, per-cell probes, and bubble-up paths."""
+    top: dict[str, str] = {}
+    per_cell: dict[str, dict[str, str]] = {}
+    paths: dict[str, list[tuple[str, str]]] = {}
+    for probe_name, target in probes.items():
+        parts = target.split(".")
+        if len(parts) == 1:
+            top[probe_name] = target
+            continue
+        current = root
+        path: list[tuple[str, str]] = []
+        for instance_name in parts[:-1]:
+            inst = cells[current].instances.get(instance_name)
+            if inst is None:
+                msg = (
+                    f"Hierarchical probe '{probe_name}': instance "
+                    f"'{instance_name}' not found in component '{current}'."
+                )
+                raise ValueError(msg)
+            key = resolve(inst, models, cells)
+            if key is None or key not in cells or key in models:
+                msg = (
+                    f"Hierarchical probe '{probe_name}': component "
+                    f"'{inst.component}' (used by instance '{instance_name}' "
+                    f"in '{current}') is not defined in the recursive netlist. "
+                    "Only sub-circuits (not primitives) can be probed."
+                )
+                raise ValueError(msg)
+            path.append((instance_name, current))
+            current = key
+        per_cell.setdefault(current, {})[probe_name] = parts[-1]
+        paths[probe_name] = path
+    return top, per_cell, paths
+
+
+def load_pic_yaml(
+    content: str | Mapping[str, Any],
+) -> tuple[NativeHierarchy, str]:
+    """Load a PIC document (``.pic.yml`` mapping) into a native hierarchy.
+
+    Accepts the legacy flat/recursive SAX mapping and the ``modules``/``toplevel``
+    document shape. Returns ``(cells, root)``.
+    """
+    import yaml
+
+    if isinstance(content, str):
+        data = yaml.safe_load(content)
+    else:
+        data = dict(content)
+    if not isinstance(data, Mapping):
+        msg = f"PIC document must be a mapping, got {type(data)}."
+        raise TypeError(msg)
+
+    if "modules" in data:
+        modules = data["modules"]
+        toplevel = data.get("toplevel")
+        cells = {str(name): from_legacy_flat(module) for name, module in modules.items()}
+        if toplevel is None:
+            toplevel = next(iter(cells))
+        if toplevel not in cells:
+            msg = f"Unknown toplevel module {toplevel!r}."
+            raise ValueError(msg)
+        return cells, toplevel
+
+    if "instances" in data:
+        return {"top_level": from_legacy_flat(data)}, "top_level"
+
+    cells = {str(name): from_legacy_flat(flat) for name, flat in data.items()}
+    return cells, next(iter(cells))
+
+
+def load_native_netlist(content_or_path: object) -> Netlist:
+    """Load a single native netlist from YAML content, a path, or a mapping."""
+    from pathlib import Path
+
+    if isinstance(content_or_path, Netlist):
+        return content_or_path
+    if isinstance(content_or_path, Mapping):
+        cells, root = load_pic_yaml(content_or_path)
+        return cells[root]
+    if hasattr(content_or_path, "read"):
+        content: object = content_or_path.read()  # type: ignore[union-attr]
+    elif isinstance(content_or_path, (str, Path)) and "\n" not in str(content_or_path):
+        path = Path(str(content_or_path))
+        content = path.read_text() if path.exists() else str(content_or_path)
+    else:
+        content = content_or_path
+    cells, root = load_pic_yaml(content)  # type: ignore[arg-type]
+    return cells[root]
+
+
+def load_native_recursive_netlist(
+    top_level_path: object,
+    ext: str = ".pic.yml",
+) -> tuple[NativeHierarchy, str]:
+    """Load a directory of PIC YAML files into a native hierarchy.
+
+    Mirrors ``sax.load_recursive_netlist`` discovery (suffix match, sorted,
+    duplicate rejection) but returns ``(cells, root)`` with native objects.
+    """
+    from pathlib import Path
+
+    top_level_path = Path(str(top_level_path)).resolve()
+    folder_path = top_level_path.parent
+
+    def _net_name(path: Path) -> str:
+        return path.name.removesuffix(ext)
+
+    root = _net_name(top_level_path)
+    cells: NativeHierarchy = {root: load_native_netlist(top_level_path)}
+    for path in sorted(folder_path.rglob(f"*{ext}")):
+        if not path.is_file() or path.resolve() == top_level_path:
+            continue
+        name = _net_name(path)
+        if name in cells:
+            msg = f"Duplicate recursive netlist component name {name!r}: {path}."
+            raise ValueError(msg)
+        cells[name] = load_native_netlist(path)
+    return cells, root

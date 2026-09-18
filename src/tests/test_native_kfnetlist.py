@@ -255,3 +255,158 @@ def test_native_settings_jit_gradient(backend: sax.BackendLike) -> None:
         lambda g: jnp.abs(model(gain=g)["in0", "out0"]) ** 2
     )(2.0)
     np.testing.assert_allclose(gradient, 4.0, rtol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Probes and internal ports on native input
+# ---------------------------------------------------------------------------
+
+
+def _two_leaves() -> Netlist:
+    nl = Netlist()
+    nl.create_port("in0")
+    nl.create_port("out0")
+    nl.create_inst("a", kcl="D", component="wg", settings={"v": 2.0})
+    nl.create_inst("b", kcl="D", component="wg", settings={"v": 3.0})
+    nl.create_net(NetlistPort(name="in0"), PortRef(instance="a", port="in0"))
+    nl.create_net(PortRef(instance="a", port="out0"), PortRef(instance="b", port="in0"))
+    nl.create_net(PortRef(instance="b", port="out0"), NetlistPort(name="out0"))
+    return nl
+
+
+def test_native_flat_probe() -> None:
+    model, _ = sax.circuit(
+        _two_leaves(), {"wg": lambda v=1.0: _leaf(v)}, probes={"mid": "a,out0"}
+    )
+    result = model()
+    np.testing.assert_allclose(complex(result["in0", "out0"]), 6.0)
+    # mid_fwd measures the wave travelling into a,out0 (from the b side).
+    np.testing.assert_allclose(complex(result["out0", "mid_fwd"]), 3.0)
+    assert "mid_bwd" in {k[0] for k in result} | {k[1] for k in result}
+
+
+def test_native_internal_port_warn_drops_port() -> None:
+    nl = _two_leaves()
+    nl.create_port("bad")
+    nl.create_net(NetlistPort(name="bad"), PortRef(instance="a", port="out0"))
+    with pytest.warns(UserWarning, match="internal node"):
+        model, _ = sax.circuit(nl, {"wg": lambda v=1.0: _leaf(v)})
+    ports = {k[0] for k in model()} | {k[1] for k in model()}
+    assert "bad" not in ports
+
+
+def test_native_hierarchical_probe() -> None:
+    from kfnetlist import PlacedNetlist
+
+    sub = PlacedNetlist()
+    sub.create_inst("a", kcl="D", component="wg", settings={"v": 2.0}, cell="wg_a")
+    sub.create_inst("b", kcl="D", component="wg", settings={"v": 3.0}, cell="wg_b")
+    sub.create_port("in0")
+    sub.create_port("out0")
+    sub.create_net(NetlistPort(name="in0"), PortRef(instance="a", port="in0"))
+    sub.create_net(PortRef(instance="a", port="out0"), PortRef(instance="b", port="in0"))
+    sub.create_net(PortRef(instance="b", port="out0"), NetlistPort(name="out0"))
+
+    top = PlacedNetlist()
+    top.create_inst("sub", kcl="D", component="sub", cell="sub_cell")
+    top.create_port("in0")
+    top.create_port("out0")
+    top.create_net(NetlistPort(name="in0"), PortRef(instance="sub", port="in0"))
+    top.create_net(PortRef(instance="sub", port="out0"), NetlistPort(name="out0"))
+
+    cells = {"sub_cell": sub, "top": top}
+    model, _ = sax.circuit(
+        cells,
+        {"wg": lambda v=1.0: _leaf(v)},
+        top_level_name="top",
+        probes={"mid": "sub.a,out0"},
+    )
+    result = model()
+    np.testing.assert_allclose(complex(result["in0", "out0"]), 6.0)
+    np.testing.assert_allclose(complex(result["out0", "mid_fwd"]), 3.0)
+
+
+# ---------------------------------------------------------------------------
+# PIC YAML → native
+# ---------------------------------------------------------------------------
+
+
+def test_load_pic_yaml_flat() -> None:
+    doc = (
+        "instances:\n"
+        "  a:\n    component: wg\n    settings: {v: 2.0}\n"
+        "  b:\n    component: wg\n"
+        "connections:\n  a,out0: b,in0\n"
+        "ports:\n  in0: a,in0\n  out0: b,out0\n"
+    )
+    cells, root = native.load_pic_yaml(doc)
+    assert isinstance(cells[root], Netlist)
+    model, _ = sax.circuit(cells, {"wg": lambda v=1.0: _leaf(v)}, top_level_name=root)
+    np.testing.assert_allclose(complex(model()["in0", "out0"]), 2.0)
+
+
+def test_load_pic_yaml_modules() -> None:
+    doc = (
+        "modules:\n"
+        "  top:\n"
+        "    instances:\n      sub:\n        component: child\n"
+        "    ports:\n      in: sub,in0\n"
+        "  child:\n"
+        "    instances:\n      w:\n        component: wg\n"
+        "    ports:\n      in0: w,in0\n      out0: w,out0\n"
+        "toplevel: top\n"
+    )
+    cells, root = native.load_pic_yaml(doc)
+    assert root == "top"
+    assert set(cells) == {"top", "child"}
+    assert isinstance(cells["child"], Netlist)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "kfnetlist Net is undirected; the forward backend needs directed "
+        "connections. Blocked on a directed-connection representation upstream."
+    ),
+)
+def test_native_forward_backend_direction_blocker() -> None:
+    net = {
+        "instances": {"s": "split", "w": "wg", "m": "merge"},
+        "connections": {"s,out0": "m,in0", "s,out1": "w,in0", "w,out0": "m,in1"},
+        "ports": {"in0": "s,in0", "out0": "m,out0"},
+    }
+    nl = native.from_legacy_flat(net)
+    cells = {"top_level": nl}
+
+    def split() -> sax.SDict:
+        return {("in0", "out0"): 0.2, ("in0", "out1"): 0.3}
+
+    def merge() -> sax.SDict:
+        return {("in0", "out0"): 0.4, ("in1", "out0"): 0.5}
+
+    def wg(gain: float = 0.8) -> sax.SDict:
+        return {("in0", "out0"): jnp.asarray(gain)}
+
+    model, _ = sax.circuit(
+        cells, {"split": split, "merge": merge, "wg": wg}, backend="forward"
+    )
+    np.testing.assert_allclose(complex(model(w={"gain": 0.8})["in0", "out0"]), 0.2)
+
+
+def test_load_native_recursive_netlist(tmp_path) -> None:
+    top = tmp_path / "top.pic.yml"
+    top.write_text(
+        "instances:\n  sub:\n    component: child\nports:\n  in0: sub,in0\n  out0: sub,out0\n"
+    )
+    child = tmp_path / "child.pic.yml"
+    child.write_text(
+        "instances:\n  w:\n    component: wg\nports:\n  in0: w,in0\n  out0: w,out0\n"
+    )
+    cells, root = native.load_native_recursive_netlist(top)
+    assert root == "top"
+    assert set(cells) == {"top", "child"}
+    assert all(isinstance(v, Netlist) for v in cells.values())
+    model, _ = sax.circuit(
+        cells, {"wg": lambda v=1.0: _leaf(v)}, top_level_name=root
+    )
+    assert ("in0", "out0") in model()

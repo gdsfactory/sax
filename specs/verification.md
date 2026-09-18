@@ -42,16 +42,18 @@ the user's instruction used `-n`.
 
 ## Netlist identity investigation
 
-The subsequent test-and-plan change adds an issue #120 reproduction and an
-explicit model-alias control to smoke. `just smoke` now reports **5 passed,
-1 xfailed**, 3.37s pytest / **4.33s wall-clock** in the existing environment.
-`--runxfail -k counted-name-loses-factory` confirms the intended numerical failure:
-the second hierarchy variant returns zero instead of analytical coupling.
-Smoke plus kfnetlist parser, recursive YAML, and hierarchy validation tests:
-**45 passed, 1 xfailed** in 4.51s. The expected failure is not a passing contract.
-Full tests were not rerun for this test/documentation-only change. See the
+The native kfnetlist path adds `src/sax/native.py`, `_circuit_native`, and
+`src/tests/test_native_kfnetlist.py`. Non-notebook suite after the change:
+**397 passed** (includes the new native tests). `just smoke`: **6 passed**,
+3.23s pytest / ~4.5s wall-clock, existing environment. Native input supports
+factory model substitution, distinct-cell fallback, cell-specific overrides,
+missing-model diagnostics, JSON, legacy adaptation, arrays, flat/hierarchical
+probes, internal-port policy, settings, JIT, and gradients. The forward-backend
+directed-connection blocker is recorded by a strict xfail; it is not a pass.
+Full `src/tests` including notebooks, `uv lock --check`, and cross-platform
+installs were not rerun for this slice. See the
 [investigation](changes/kfnetlist-canonical.md) for live extraction evidence,
-version distinctions, and the proposed migration's separate acceptance criteria.
+version distinctions, and the blocker.
 
 ## Fast checks during TODO remediation
 

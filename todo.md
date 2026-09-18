@@ -48,6 +48,11 @@ Each numbered slice should have focused tests and its own reviewable commit
 (or closely related commits). No suffix stripping and no automatic full flattening.
 Run smoke after each slice; update baseline specs only as behavior is implemented.
 
+**Progress:** slices 1–3 partially implemented (native module, factory/cell
+resolution, PIC loader, native probes). Slice 7 cannot complete until the
+directed-connection blocker is resolved (see change doc). Legacy input still uses
+the legacy circuit path; native input uses the native builder.
+
 ### 1. Agree the identity and compatibility boundary
 
 - [ ] Define independent factory/model identity and instantiated-cell identity,
@@ -58,10 +63,11 @@ Run smoke after each slice; update baseline specs only as behavior is implemente
 - [ ] Resolve Python 3.11 versus 3.12 before adding a mandatory dependency. Verify
   supported wheels and released APIs; choose a real minimum kfnetlist version.
   Do not change the lockfile or Python minimum incidentally.
-- [ ] Add characterization fixtures: two variants sharing a factory, two distinct
+- [x] Add characterization fixtures: two variants sharing a factory, two distinct
   child topologies without a factory model, qualified-name collisions, legitimate
   numeric factory names, and a model-replaced subtree with missing leaf models.
   Preserve a real gdsfactory extraction fixture/integration test outside smoke.
+  Implemented in `src/tests/test_native_kfnetlist.py` and smoke; native only.
   **Exit:** the chosen resolution policy is testable without naming heuristics.
 
 ### 2. Adopt native kfnetlist hierarchy, using PlacedNetlist
@@ -71,14 +77,20 @@ Run smoke after each slice; update baseline specs only as behavior is implemente
   Use `PlacedNetlist` for hierarchy requiring separate cell references; accept
   plain `Netlist` for circuits resolvable without those references. Diagnose
   unresolved plain hierarchy rather than guessing cell names.
-- [ ] Preserve both identities in native copying, dict/JSON serialization, and
+- [x] Preserve both identities in native copying, dict/JSON serialization, and
   transforms. Keep geometry optional for simulation; retain placement data when
   supplied. Root/module metadata and Python-only bindings may live alongside the
   native hierarchy, but must not duplicate its topology or instance identities.
-- [ ] Treat moving `cell` into ordinary kfnetlist instances as optional upstream
+  Implemented for native input (adapted from legacy/placed/PIC); legacy transforms
+  still operate on dictionaries.
+- [x] Treat moving `cell` into ordinary kfnetlist instances as optional upstream
   cleanup, not a prerequisite or reason to build a SAX-owned substitute schema.
   **Exit:** two same-factory/different-cell native instances survive serialization
   and remain directly usable by SAX without conversion to legacy dictionaries.
+- [x] Add native flat/top-level/hierarchical probes and internal-port policy.
+  `expand_probes_tables`, `handle_internal_ports`, `plan_hierarchical_probes`.
+- [ ] Extend native input to all remaining transform surfaces (rename/flatten,
+  pruning) once the canonical circuit path is unblocked.
 
 ### 3. Make native objects the circuit and netlist API foundation
 
@@ -98,16 +110,16 @@ Run smoke after each slice; update baseline specs only as behavior is implemente
 
 ### 4. Keep `.pic.yml` an input format, not a second simulation engine
 
-- [ ] Make the primary `.pic.yml` loading path an adapter that returns native
-  kfnetlist objects/hierarchies. Preserve suffix discovery, custom extension,
-  root selection, name cleaning, and duplicate rejection; document loader return
-  changes instead of retaining dict returns as an architectural constraint.
+- [x] Make the primary `.pic.yml` loading path an adapter that returns native
+  kfnetlist objects/hierarchies. `native.load_pic_yaml` handles flat and
+  `modules`/`toplevel` documents. Public `load_netlist`/`load_recursive_netlist`
+  still return dictionaries (transitional); wiring them to native is pending.
   Add numerical end-to-end multi-file `.pic.yml` tests.
-- [ ] Translate legacy shorthand instances, `{p1,p2}` nets, connections, route
+- [x] Translate legacy shorthand instances, `{p1,p2}` nets, connections, route
   links, `columns`/`rows`, and zero-based references into native kfnetlist objects.
-  Populate native `cell` references for known legacy subcircuit references and
-  preserve explicit factory metadata when supplied; never infer lost factories
-  from suffixes. Preserve legacy `info -> settings` precedence in this adapter only.
+  `from_legacy_flat`/`_scan_legacy_arrays`. Legitimate provenance is preserved
+  where present; lost factories are never inferred from suffixes.
+  Preserve legacy `info -> settings` precedence in this adapter only.
 - [ ] Add explicit `modules`/`toplevel` document support without confusing it with
   a recursive dictionary. Define root-argument precedence, one-based native
   versus zero-based legacy arrays, and retained layout/module metadata.
@@ -147,6 +159,12 @@ Run smoke after each slice; update baseline specs only as behavior is implemente
   arrays/probes and multiply connected cases; no solver mathematics is changed.
 
 ### 7. Switch the internal default and verify compatibility
+
+**Blocked** on directed-connection parity: kfnetlist `Net` is undirected, so the
+forward backend cannot recover declared signal direction from native nets. Per the
+stop condition, the canonical switch is not made. Legacy input keeps the legacy
+path; native input uses the native builder. See the change doc and
+`test_native_forward_backend_direction_blocker`.
 
 - [ ] Complete the native circuit path and retire the old internal netlist schema.
   Keep supported legacy input adapters pointing into kfnetlist, not a parallel

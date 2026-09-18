@@ -54,11 +54,14 @@ acyclicity validation raises `ValueError` for recursive component definitions;
 Known identity limitation ([#120](https://github.com/gdsfactory/sax/issues/120)):
 `component` serves as both model key and recursive cell key. Counted gdsfactory
 hierarchy variants can silently fall back to layout subcircuits instead of their
-shared analytical model. `test_counted_hierarchy_model_identity` in the smoke
-suite records this with a strict numerical xfail and a passing explicit-alias
-control. Separate factory/cell identities and canonical kfnetlist topology are
-[proposed](changes/kfnetlist-canonical.md), not implemented; suffix stripping is
-not a safe general solution.
+shared analytical model. Native kfnetlist input now avoids this: `sax.circuit`
+accepts `Netlist`/`PlacedNetlist` hierarchies and resolves factory `component`
+before descending into a distinct `PlacedInstance.cell`. Legacy dictionaries and
+`.pic.yml` still use the legacy path and retain the limitation; see
+[the canonical change proposal](changes/kfnetlist-canonical.md) for the
+directed-connection blocker. `test_native_kfnetlist.py` and the smoke suite cover
+factory substitution, distinct-cell fallback, overrides, missing-model
+diagnostics, arrays, probes, settings, JIT, and gradients.
 
 Array instances expand to `name<column.row>`. References can infer/patch array
 extents. Evaluation uses the base name's settings for every element; this is not

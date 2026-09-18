@@ -267,8 +267,7 @@ def _native_dag(
             if key is None:
                 key = inst.component
             g.add_node(key)
-            if key != cell_name:
-                g.add_edge(cell_name, key)
+            g.add_edge(cell_name, key)
     nodes = [root, *nx.descendants(g, root)]
     g = cast(nx.DiGraph, nx.induced_subgraph(g, nodes))
     return _validate_dag(g)
@@ -286,19 +285,28 @@ def _circuit_native(
     on_internal_port: Literal["warn", "ignore", "as_probes"],
 ) -> tuple[sax.Model, sax.CircuitInfo]:
     cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
-    if probes or on_internal_port == "as_probes":
-        msg = (
-            "Probe expansion for native kfnetlist input is not implemented yet. "
-            "Convert to legacy netlist format or omit probes."
-        )
-        raise NotImplementedError(msg)
 
     models = dict(models or {})
     dependency_dag = _native_dag(cells, root, models)
     models = _validate_models(models, dependency_dag)
 
-    root_ports = native.lower(cells[root])[2]
-    if len(root_ports) < 1:
+    top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
+        cells, root, models, probes or {}
+    )
+    extra_ports: dict[str, dict[str, str]] = {}
+    for probe_name, path in probe_paths.items():
+        for instance_name, parent in reversed(path):
+            extra_ports.setdefault(parent, {})[f"{probe_name}_fwd"] = (
+                f"{instance_name},{probe_name}_fwd"
+            )
+            extra_ports.setdefault(parent, {})[f"{probe_name}_bwd"] = (
+                f"{instance_name},{probe_name}_bwd"
+            )
+
+    root_instances, root_nets, root_ports = native.lower(cells[root])
+    del root_instances, root_nets
+    has_probes = bool(probes) or bool(per_cell_probes)
+    if len(root_ports) < 1 and not has_probes:
         ports_str = ", ".join(root_ports) or "no ports given"
         msg = (
             "Cannot create circuit: "
@@ -328,7 +336,27 @@ def _circuit_native(
                 )
                 raise ValueError(msg)
             inst["component"] = key
-        available = {**models, **current_models}
+
+        for port_name, endpoint in extra_ports.get(model_name, {}).items():
+            ports[port_name] = endpoint
+
+        probe_here: dict[str, str] = {}
+        if model_name == root:
+            ports, auto_probes = native.handle_internal_ports(
+                instances, nets, ports, on_internal_port
+            )
+            probe_here.update(top_probes)
+            probe_here.update(auto_probes)
+        probe_here.update(per_cell_probes.get(model_name, {}))
+
+        if probe_here:
+            instances, nets, ports = native.expand_probes_tables(
+                instances, nets, ports, probe_here
+            )
+
+        available: sax.Models = {**models, **current_models}
+        if probe_here:
+            available["_ideal_probe"] = ideal_probe
         current_models[model_name] = circuit = _flat_circuit(
             instances,
             {},
