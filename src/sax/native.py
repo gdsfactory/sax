@@ -697,3 +697,72 @@ def flatten_recursive_netlist(
         recursive=True,
         separator=separator,
     )
+
+
+def remove_unused_instances(nl: Netlist) -> Netlist:
+    """Return a copy of *nl* with instances unreachable from its ports removed.
+
+    Uses native ``remove_instances``; connectivity is read from the lowered
+    topology tables so no legacy dictionary schema is involved.
+    """
+    import networkx as nx
+
+    instances, nets, ports = lower(nl)
+    graph = nx.Graph()
+    for name in instances:
+        graph.add_node(name)
+    for net in nets:
+        graph.add_edge(net["p1"].split(",")[0], net["p2"].split(",")[0])
+    roots = {f"__port_{i}": ep.split(",")[0] for i, ep in enumerate(ports.values())}
+    for node, target in roots.items():
+        graph.add_node(node)
+        graph.add_edge(node, target)
+    keep: set[str] = set()
+    for node in roots:
+        keep |= nx.descendants(graph, node)
+    base_keep = {name.split("<")[0] for name in keep}
+    remove = [
+        base
+        for base in _base_instance_names(nl)
+        if base not in base_keep
+    ]
+    result = copy_netlist(nl)
+    if remove:
+        result.remove_instances(remove)
+    return result
+
+
+def _base_instance_names(nl: Netlist) -> list[str]:
+    return list(nl.instances)
+
+
+def rename_instances(
+    nl: Netlist, mapping: Mapping[str, str]
+) -> Netlist:
+    """Return a native copy with instances renamed by *mapping*."""
+    d = nl.to_dict()
+    instances = {}
+    for name, inst in d.get("instances", {}).items():
+        instances[mapping.get(name, name)] = inst
+    d["instances"] = instances
+    for net in d.get("nets", []):
+        for member in net:
+            if isinstance(member, dict) and "instance" in member:
+                member["instance"] = mapping.get(member["instance"], member["instance"])
+    placements = d.get("placements")
+    if isinstance(placements, dict):
+        d["placements"] = {
+            mapping.get(name, name): value for name, value in placements.items()
+        }
+    factory = PlacedNetlist if isinstance(nl, PlacedNetlist) else Netlist
+    return factory.from_dict(d)
+
+
+def rename_models(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
+    """Return a native copy with instance factory ``component`` names remapped."""
+    d = nl.to_dict()
+    for inst in d.get("instances", {}).values():
+        if isinstance(inst, dict) and "component" in inst:
+            inst["component"] = mapping.get(inst["component"], inst["component"])
+    factory = PlacedNetlist if isinstance(nl, PlacedNetlist) else Netlist
+    return factory.from_dict(d)

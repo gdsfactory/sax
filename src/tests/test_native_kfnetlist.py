@@ -516,3 +516,35 @@ def test_circuit_does_not_mutate_native_input() -> None:
     model, _ = sax.circuit(nl, {"wg": lambda v=1.0: _leaf(v)}, probes={"mid": "a,out0"})
     del model
     assert nl.to_dict() == before
+
+
+def test_sax_flatten_netlist_dispatches_native() -> None:
+    cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
+    flat = sax.flatten_netlist(cells, sep="__")
+    assert isinstance(flat, Netlist)
+    assert "x__x__w" in native.lower(flat, [])[0]
+
+
+def test_native_remove_unused_instances() -> None:
+    nl = _two_leaves()
+    nl.create_inst("unused", kcl="D", component="wg")
+    pruned = native.remove_unused_instances(nl)
+    assert "unused" not in pruned.instances
+    assert {"a", "b"} <= set(pruned.instances)
+
+
+def test_native_rename_instances_and_models() -> None:
+    nl = _two_leaves()
+    renamed = native.rename_instances(nl, {"a": "x", "b": "y"})
+    assert {"x", "y"} <= set(renamed.instances)
+    assert "a" not in renamed.instances
+    endpoints = [
+        member.to_dict()
+        for net in renamed.nets
+        for member in net
+        if isinstance(member.to_dict(), dict) and "instance" in member.to_dict()
+    ]
+    assert all(m["instance"] in {"x", "y"} for m in endpoints)
+
+    remapped = native.rename_models(nl, {"wg": "wg2"})
+    assert all(i.component == "wg2" for i in remapped.instances.values())

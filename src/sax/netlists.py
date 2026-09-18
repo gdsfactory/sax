@@ -100,10 +100,35 @@ def flatten_netlist(recnet: sax.RecursiveNetlist, sep: str = "~") -> sax.Netlist
         # Result has instances like "sub1~wg1" for the flattened hierarchy
         ```
     """
+    if _is_native_input(recnet):
+        from . import native
+
+        cells, root = _native_cells_and_root(recnet)
+        return native.flatten_netlist(cells, root, separator=sep)
     first_name = next(iter(recnet.keys()))
     net = deepcopy(recnet[first_name])
     _flatten_netlist_into(recnet, net, sep)
     return net
+
+
+def _is_native_input(obj: object) -> bool:
+    try:
+        from . import native
+
+        return native is not None and (
+            native.is_native(obj) or native.is_native_hierarchy(obj)
+        )
+    except ImportError:  # pragma: no cover - kfnetlist unavailable
+        return False
+
+
+def _native_cells_and_root(obj: object) -> tuple[dict, str]:
+    from . import native
+
+    if native.is_native(obj):
+        return {"top_level": obj}, "top_level"
+    cells = dict(obj)  # type: ignore[arg-type]
+    return cells, next(iter(cells))
 
 
 @overload
@@ -115,6 +140,10 @@ def remove_unused_instances(netlist: sax.RecursiveNetlist) -> sax.RecursiveNetli
 
 
 def remove_unused_instances(netlist: sax.AnyNetlist) -> sax.AnyNetlist:
+    if _is_native_input(netlist):
+        from . import native
+
+        return native.remove_unused_instances(netlist)  # type: ignore[arg-type]
     if "instances" in netlist:
         net = cast(sax.Netlist, deepcopy(netlist))
         names = _get_nodes_to_remove(_get_connectivity_graph(net), net)
@@ -148,6 +177,15 @@ def rename_instances(
     netlist: sax.AnyNetlist,
     mapping: dict[sax.InstanceName, sax.InstanceName],
 ) -> sax.AnyNetlist:
+    if _is_native_input(netlist):
+        from . import native
+
+        if native.is_native(netlist):
+            return native.rename_instances(netlist, mapping)  # type: ignore[arg-type]
+        return {
+            name: native.rename_instances(nl, mapping)
+            for name, nl in netlist.items()  # type: ignore[union-attr]
+        }
     if (recnet := sax.try_into[sax.RecursiveNetlist](netlist)) is not None:
         return {k: rename_instances(v, mapping) for k, v in recnet.items()}
 
@@ -210,6 +248,15 @@ def rename_models(
     netlist: sax.AnyNetlist,
     mapping: dict[sax.Name, sax.Name],
 ) -> sax.AnyNetlist:
+    if _is_native_input(netlist):
+        from . import native
+
+        if native.is_native(netlist):
+            return native.rename_models(netlist, mapping)  # type: ignore[arg-type]
+        return {
+            name: native.rename_models(nl, mapping)
+            for name, nl in netlist.items()  # type: ignore[union-attr]
+        }
     if (recnet := sax.try_into[sax.RecursiveNetlist](netlist)) is not None:
         return {k: rename_models(v, mapping) for k, v in recnet.items()}
 
