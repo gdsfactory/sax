@@ -15,6 +15,10 @@ kfnetlist array references translate 1-based `ia/ib` to zero-based
 External members attach to the first instance member; multiple instance members
 are connected in a chain, not expanded to all pairwise links. Unused layout fields
 are not retained. The adapter itself does not import kfnetlist.
+In particular it drops `kcl` and placed-instance `cell` references, so it does not
+support general hierarchy fallback when factory names differ from cell-map keys.
+The [canonical kfnetlist investigation](changes/kfnetlist-canonical.md) records a
+live reproduction and a proposed migration retaining `.pic.yml` compatibility.
 
 Mosaic resolves models through the supplied mapping, optionally an active
 gdsfactory PDK, or a final-name fallback. One-member nets become external ports;

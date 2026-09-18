@@ -40,6 +40,19 @@ collection configuration and NumPy/xarray/SAX dtype deprecations, not skipped te
 No full lint/type/pre-commit or public-example notebook run is claimed. Commits after
 the user's instruction used `-n`.
 
+## Netlist identity investigation
+
+The subsequent test-and-plan change adds an issue #120 reproduction and an
+explicit model-alias control to smoke. `just smoke` now reports **5 passed,
+1 xfailed**, 3.37s pytest / **4.33s wall-clock** in the existing environment.
+`--runxfail -k counted-name-loses-factory` confirms the intended numerical failure:
+the second hierarchy variant returns zero instead of analytical coupling.
+Smoke plus kfnetlist parser, recursive YAML, and hierarchy validation tests:
+**45 passed, 1 xfailed** in 4.51s. The expected failure is not a passing contract.
+Full tests were not rerun for this test/documentation-only change. See the
+[investigation](changes/kfnetlist-canonical.md) for live extraction evidence,
+version distinctions, and the proposed migration's separate acceptance criteria.
+
 ## Fast checks during TODO remediation
 
 Run `just smoke` (or `.venv/bin/python -m pytest src/tests/test_smoke.py -q`) in the

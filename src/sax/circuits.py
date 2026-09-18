@@ -13,6 +13,7 @@ import numpy as np
 
 import sax
 
+from . import native
 from .backends import circuit_backends
 from .models.probes import ideal_probe
 from .netlists import (
@@ -172,6 +173,18 @@ def circuit(
     """
     _backend = sax.into[sax.Backend](backend)
 
+    if native.is_native(netlist) or native.is_native_hierarchy(netlist) or _is_native_json(netlist):
+        return _circuit_native(
+            netlist,
+            models,
+            backend=_backend,
+            return_type=return_type,
+            top_level_name=top_level_name,
+            ignore_impossible_connections=ignore_impossible_connections,
+            probes=probes,
+            on_internal_port=on_internal_port,
+        )
+
     instance_models = _extract_instance_models(netlist)
     recnet = into_recnet(
         netlist,
@@ -226,6 +239,115 @@ def circuit(
         dag=dependency_dag,
         models=current_models,
         backend=_backend,
+    )
+
+
+def _is_native_json(netlist: object) -> bool:
+    """Return whether *netlist* is a JSON string encoding native kfnetlist data."""
+    if not isinstance(netlist, str):
+        return False
+    text = netlist.lstrip()
+    return text.startswith("{") and '"instances"' in text
+
+
+def _native_dag(
+    cells: native.NativeHierarchy,
+    root: str,
+    models: sax.Models,
+) -> nx.DiGraph:
+    g = nx.DiGraph()
+    for cell_name in cells:
+        g.add_node(cell_name)
+    for cell_name, nl in cells.items():
+        if cell_name in models:
+            continue
+        g.add_node(cell_name)
+        for inst in nl.instances.values():
+            key = native.resolve(inst, models, cells)
+            if key is None:
+                key = inst.component
+            g.add_node(key)
+            if key != cell_name:
+                g.add_edge(cell_name, key)
+    nodes = [root, *nx.descendants(g, root)]
+    g = cast(nx.DiGraph, nx.induced_subgraph(g, nodes))
+    return _validate_dag(g)
+
+
+def _circuit_native(
+    netlist: object,
+    models: sax.Models | None,
+    *,
+    backend: sax.Backend,
+    return_type: Literal["SDict", "SDense", "SCoo"],
+    top_level_name: str,
+    ignore_impossible_connections: bool,
+    probes: dict[str, str] | None,
+    on_internal_port: Literal["warn", "ignore", "as_probes"],
+) -> tuple[sax.Model, sax.CircuitInfo]:
+    cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
+    if probes or on_internal_port == "as_probes":
+        msg = (
+            "Probe expansion for native kfnetlist input is not implemented yet. "
+            "Convert to legacy netlist format or omit probes."
+        )
+        raise NotImplementedError(msg)
+
+    models = dict(models or {})
+    dependency_dag = _native_dag(cells, root, models)
+    models = _validate_models(models, dependency_dag)
+
+    root_ports = native.lower(cells[root])[2]
+    if len(root_ports) < 1:
+        ports_str = ", ".join(root_ports) or "no ports given"
+        msg = (
+            "Cannot create circuit: "
+            f"at least 1 port needs to be defined. Got {ports_str}."
+        )
+        raise ValueError(msg)
+
+    circuit = None
+    new_models: sax.Models = {}
+    current_models: sax.Models = {}
+    model_names = list(nx.topological_sort(dependency_dag))[::-1]
+    for model_name in model_names:
+        if model_name in models:
+            new_models[model_name] = models[model_name]
+            continue
+
+        current_models |= new_models
+        new_models = {}
+        nl = cells[model_name]
+        instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
+        for name, inst in instances.items():
+            key = bindings.get(name)
+            if key is None:
+                msg = (
+                    f"Could not resolve model for instance {name!r} "
+                    f"(component {inst['component']!r}) in {model_name!r}."
+                )
+                raise ValueError(msg)
+            inst["component"] = key
+        available = {**models, **current_models}
+        current_models[model_name] = circuit = _flat_circuit(
+            instances,
+            {},
+            nets,
+            ports,
+            native.placements(nl),
+            available,
+            backend,
+            ignore_impossible_connections=ignore_impossible_connections,
+        )
+
+    if circuit is None:
+        msg = "Could not construct circuit (unknown reason)"
+        raise RuntimeError(msg)
+    circuit = _enforce_return_type(circuit, return_type)
+    return circuit, sax.CircuitInfo(
+        dag=dependency_dag,
+        models=current_models,
+        backend=backend,
     )
 
 
@@ -297,6 +419,8 @@ def draw_dag(dag: nx.DiGraph, *, with_labels: bool = True, **kwargs: Any) -> Non
 def get_required_circuit_models(
     netlist: sax.AnyNetlist,
     models: dict[str, sax.Model] | None = None,
+    *,
+    top_level_name: str = "top_level",
 ) -> list[str]:
     """Determine which component models are required for a given netlist.
 
@@ -331,6 +455,11 @@ def get_required_circuit_models(
         ```
     """
     instance_models = _extract_instance_models(netlist)
+    if native.is_native(netlist) or native.is_native_hierarchy(netlist):
+        cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
+        dependency_dag = _native_dag(cells, root, dict(models or {}))
+        _, required, _ = _find_missing_models(models, dependency_dag)
+        return required
     recnet = into_recnet(
         netlist,
     )

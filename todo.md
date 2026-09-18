@@ -1,129 +1,180 @@
-# Codebase TODOs
+# Canonical kfnetlist migration
 
-Findings from the baseline review. **Reproduced** means observed at runtime;
-**inspected** means identified from source and still needs a focused regression
-check. Establish intended behavior before changing compatibility-sensitive APIs.
-See [specs/open-questions.md](specs/open-questions.md) for supporting details.
+**Planning only; migration not yet implemented.** kfnetlist is to become SAX's
+canonical public and internal netlist format—not an additional import format.
+Use native `Netlist` / `PlacedNetlist` objects directly, with `PlacedNetlist.cell`
+for hierarchical references. `.pic.yml` and legacy SAX dictionaries get adapters
+**into kfnetlist**, never the reverse. Preserve their supported input behavior,
+not SAX's old dictionary schema as the internal representation.
 
-## Start with this one:
+Required data flow:
 
-- [x] Create a smaller smoke-test test-suite that completes in under 10 seconds.
-  `just smoke`: 4 tests covering representations, settings, JIT/gradients, and an
-  optical limit; measured 7.13 seconds wall-clock including Python/pytest startup.
+```text
+native kfnetlist objects ───────────────────┐
+.pic.yml / legacy dicts → kfnetlist adapter ├→ native hierarchy / transforms
+kfnetlist dict/JSON → native deserialization┘  → model resolution → backend arrays
+```
 
-## Highest priority
+Detailed findings, proposed contracts, evidence, and unresolved decisions:
+[`specs/changes/kfnetlist-canonical.md`](specs/changes/kfnetlist-canonical.md).
 
-- [x] **Correct Touchstone input/output direction mapping.** Reproduced: importing
-  an asymmetric fixture reverses `S21` and `S12`. Check the writer independently
-  against an external fixture; a self-round-trip could conceal matching errors.
-  Source: `src/sax/parsers/touchstone.py`.
-- [x] **Make netlist transformations handle `nets` consistently.** Inspected:
-  hierarchical flattening handles `connections` but not equivalent `nets`, and
-  instance renaming leaves references inside `nets` unchanged. Add equivalence and
-  renamed-reference tests. Source: `src/sax/netlists.py`.
-  Regression: `test_netlist_transforms.py`; focused suite plus smoke: **12 passed**.
-  Circuit equivalence uses identifier-safe `sep="__"`; legacy `~` names are export-only.
-- [x] **Validate and correct forward-only propagation on reconvergent paths.**
-  Inspected: BFS-layer propagation may miss contributions arriving along longer
-  paths after a node has propagated. Compare unequal-depth feed-forward fixtures
-  against KLU/FG; implement correct accumulation or explicitly reject unsupported
-  topologies. Source: `src/sax/backends/forward_only.py`.
-  Resolved with topological accumulation and explicit cycle rejection;
-  `test_forward_backend.py` plus smoke: **6 passed**.
-- [x] **Define and implement circuit-wide batch broadcasting.** Inspected: KLU
-  chooses a highest-rank instance shape rather than a joint broadcast shape.
-  Test `(N, 1)` with `(1, M)`, scalar/array mixtures, and incompatible shapes.
-  Source: `src/sax/backends/klu.py`.
-  Joint broadcast shape implemented; `test_backend_broadcasting.py` plus smoke:
-  **13 passed**, including JIT and gradient checks.
+The previous 24-item remediation is complete; its history remains in
+[`specs/changes/todo-remediation.md`](specs/changes/todo-remediation.md) and Git.
+This replaces that completed checklist, not its completion evidence.
 
-Touchstone resolution: `src/tests/test_touchstone.py` plus smoke: **13 passed**.
-Reader/writer directions are tested independently; related input fixes share a commit.
+## Investigation complete
 
-## Other correctness and API issues
+- [x] Trace [#120](https://github.com/gdsfactory/sax/issues/120) through actual
+  gdsfactory export and SAX model lookup. Recursive export replaces factory names
+  with counted cell names; SAX can silently simulate the wrong layout subnet.
+- [x] Inspect `~/Projects/kfnetlist` at `7379b68` and compare live extraction.
+  Factory `component` is stable; only placed instances retain separate `cell`.
+  Default plain instances cannot fully identify child netlists. SAX's adapter
+  discards `cell` even when present. Analytical substitution works with native
+  extraction, but hierarchical fallback still fails.
+- [x] Assess PIC schema and packaging. Local document schema still has only one
+  `component`; its connectivity conversion omits module settings/routes/placement.
+  Local schema APIs are absent from installed kfnetlist 0.3.0. SAX supports Python
+  3.11+, whereas local kfnetlist requires 3.12+.
+- [x] Add a cheap strict xfail and passing explicit-alias control to
+  `src/tests/test_smoke.py`. Numerical failure: second variant transmits zero
+  instead of analytical coupling. `just smoke`: **5 passed, 1 xfailed, 4.33s wall**.
+  `--runxfail` confirms the intended assertion fails, not import/construction.
+  Relevant regressions: **45 passed, 1 xfailed**. No runtime/dependency change.
 
-- [x] **Honor custom modes in dense multimode conversion.** Reproduced:
-  `multimode(sdense, modes=("X",))` produces TE/TM instead of X. Verify custom
-  modes across all three representations. Source: `src/sax/multimode.py`.
-  Fixed dispatch; `test_custom_modes.py` plus smoke: **16 passed**.
-- [x] **Resolve duplicate-COO conversion semantics.** Reproduced: conversion to
-  dense sums duplicate coordinates, while conversion to dictionary keeps the last
-  value. Decide whether to reject duplicates or reduce them consistently; add
-  numerical conversion tests. Source: `src/sax/s.py`.
-  Both conversions now sum; duplicate/convention/smoke suite: **16 passed**.
-- [x] **Repair remaining Touchstone input paths.** Source:
-  `src/sax/parsers/touchstone.py`.
-  - [x] Implement documented default port labels or explicitly require labels.
-    Reproduced: omitted labels currently raise an error.
-  - [x] Support raw Touchstone v1 text without losing its port-count information.
-    Reproduced: the temporary `.dat` extension causes scikit-rf to reject it.
-  - [x] Test and repair `convert_to_wavelength=False`. Inspected: the frequency
-    coordinate is omitted during xarray construction.
-- [x] **Handle zero-variance neural-fit columns.** Inspected: feature/target
-  normalization divides by zero for constant columns. Decide rejection versus
-  supported constant-column handling and test finite results or clear errors.
-  Source: `src/sax/fit.py`. Unit scale for constant columns; predictions preserve
-  DataFrame indices. Degenerate-fit/export tests plus smoke: **8 passed**.
-- [x] **Define safe Lumerical writer file semantics.** Inspected: the writer opens
-  in append mode, including deterministic temporary paths. Test repeated writes,
-  choose/document overwrite versus append behavior, and clean up temporary output.
-  Source: `src/sax/parsers/lumerical.py`. Overwrite paths; string output is
-  file-free; input DataFrames are copied. Writer tests plus smoke: **6 passed**.
-- [x] **Fix or clarify recursive YAML discovery.** Inspected: the default search
-  is `rglob(".pic.yml")`, not `rglob("*.pic.yml")`. Add a multi-file fixture and
-  verify intended naming/discovery rules. Source: `src/sax/utils.py`.
-  Suffix glob, sorted children, duplicate-name rejection; YAML/smoke: **7 passed**.
-- [x] **Resolve phase-shifter loss units.** Inspected: attenuation uses
-  `loss * length`, but documentation suggests lumped loss. Establish intended
-  units and compatibility policy, then align formula, docs, and tests.
-  Source: `src/sax/models/straight.py`. Preserve historical dB/µm formula;
-  corrected API docs and specs. Phase-shifter tests plus smoke: **8 passed**.
+## Implementation sequence
 
-## Validation and maintainability
+Each numbered slice should have focused tests and its own reviewable commit
+(or closely related commits). No suffix stripping and no automatic full flattening.
+Run smoke after each slice; update baseline specs only as behavior is implemented.
 
-- [x] **Validate hierarchy acyclicity explicitly.** Inspected: `_validate_dag`
-  checks `is_directed()` rather than acyclicity. Add cyclic hierarchy fixtures and
-  stable diagnostics without rejecting legitimate optical feedback wiring.
-  Source: `src/sax/circuits.py`. Explicit acyclicity check added;
-  hierarchy/circuit/smoke suite: **12 passed**.
-- [x] **Resolve the missing-KLU fallback.** Inspected: unconditional imports can
-  fail before the fallback handler runs. Decide whether KLU is mandatory or truly
-  optional; align imports, metadata, documentation, and isolated import tests.
-  Sources: `src/sax/backends/__init__.py`, `src/sax/backends/klu.py`.
-  KLU stays mandatory (existing metadata); removed unreachable fallback.
-  Default/isolated-import tests plus smoke: **6 passed**.
-- [x] **Align smaller API behaviors and documentation.**
-  Unique natural-order modes, first-direction-wins reciprocity, invalid return-type
-  rejection, and probe docs aligned. API/probe/smoke suite: **47 passed**.
-  - [x] Decide unique-mode ordering for `get_modes` and test multiple ports.
-    Reproduced: it repeats modes despite documenting uniqueness.
-    Source: `src/sax/s.py`.
-  - [x] Correct unconnected-probe documentation to match the tested two-tap
-    behavior, unless an intentional behavior change is requested.
-    Source: `src/sax/netlists.py`.
-  - [x] Decide whether unsupported circuit `return_type` values should raise.
-    Inspected: they silently leave the output unwrapped.
-    Source: `src/sax/circuits.py`.
-  - [x] Define `reciprocal` behavior for conflicting directional entries.
-    Inspected: it swaps conflicting values instead of enforcing equality.
-    Source: `src/sax/s.py`.
-- [x] **Reconcile dependency declarations and the lockfile.** Reproduced:
-  `uv run --locked` refuses the current metadata/lock combination. Regenerate only
-  as an explicit dependency change, inspect the resolution diff, and rerun checks.
-  Align README installation guidance with Python requirements/dependency groups.
-  Sources: `pyproject.toml`, `uv.lock`, `README.md`.
-  Already reconciled in `9e1e73b`: `uv lock --check` passes, locked smoke: **4 passed**.
-  No dependency churn needed; corrected README Python/group installation guidance.
-- [x] **Close verification gaps.** Add focused tests for parser directionality,
-  fitting degeneracies, batch broadcasting, and backend restrictions as the above
-  issues are addressed. Run the optional kfnetlist suite in an environment with
-  its fixture dependency installed. Do not treat import tests as numerical tests.
-  Added backend restriction, interpolation/JIT/gradient, and native-coercion tests.
-  All **33 kfnetlist tests** ran. Corrected stale Pydantic notebook assumptions and
-  a test-order-sensitive file mock found by the full suite; rerun: **388 passed,
-  no skips**. Final `just smoke`: **4.07 seconds wall-clock**.
+### 1. Agree the identity and compatibility boundary
 
-All items are complete. [Completion audit](specs/changes/todo-remediation.md) maps
-requirements to per-item commits and regression evidence. Historical baseline:
-266 passed / 1 skipped; final verification: **388 passed / no skips**.
-No pre-commit compliance claim is made; commits used `-n` after that instruction.
+- [ ] Define independent factory/model identity and instantiated-cell identity,
+  explicit root selection, qualified library keys, and metadata ownership.
+  Use native placed-instance `cell` references; decide the public spelling of
+  cell-specific overrides and root selection, not a competing SAX identity schema.
+  Confirm current exact legacy overrides stay ahead of shared factory defaults.
+- [ ] Resolve Python 3.11 versus 3.12 before adding a mandatory dependency. Verify
+  supported wheels and released APIs; choose a real minimum kfnetlist version.
+  Do not change the lockfile or Python minimum incidentally.
+- [ ] Add characterization fixtures: two variants sharing a factory, two distinct
+  child topologies without a factory model, qualified-name collisions, legitimate
+  numeric factory names, and a model-replaced subtree with missing leaf models.
+  Preserve a real gdsfactory extraction fixture/integration test outside smoke.
+  **Exit:** the chosen resolution policy is testable without naming heuristics.
+
+### 2. Adopt native kfnetlist hierarchy, using PlacedNetlist
+
+- [ ] Use a cell-ID mapping of native kfnetlist objects plus an explicit root.
+  Read `component`, `kcl`, settings, and `cell` directly from native instances.
+  Use `PlacedNetlist` for hierarchy requiring separate cell references; accept
+  plain `Netlist` for circuits resolvable without those references. Diagnose
+  unresolved plain hierarchy rather than guessing cell names.
+- [ ] Preserve both identities in native copying, dict/JSON serialization, and
+  transforms. Keep geometry optional for simulation; retain placement data when
+  supplied. Root/module metadata and Python-only bindings may live alongside the
+  native hierarchy, but must not duplicate its topology or instance identities.
+- [ ] Treat moving `cell` into ordinary kfnetlist instances as optional upstream
+  cleanup, not a prerequisite or reason to build a SAX-owned substitute schema.
+  **Exit:** two same-factory/different-cell native instances survive serialization
+  and remain directly usable by SAX without conversion to legacy dictionaries.
+
+### 3. Make native objects the circuit and netlist API foundation
+
+- [ ] Make `sax.circuit` consume native Netlist/PlacedNetlist and native hierarchy
+  mappings directly. Native dict/JSON inputs deserialize into those same types;
+  this is not an adapter into SAX's old netlist schema. Ensure no input mutation.
+- [ ] Replace internal dependence on SAX's old TypedDict/Pydantic netlist schema.
+  Define public netlist types/helpers around kfnetlist; document intentional
+  return-type changes. Any temporary legacy-returning wrappers must be explicit,
+  isolated compatibility APIs, not the format consumed by circuit construction.
+- [ ] Move legacy dictionary and callable/partial conversion to the input edge,
+  producing native topology plus Python-only bindings/settings where necessary.
+  Never JSON-coerce callables or JAX settings. Do not invoke `parse_kfnetlist`'s
+  old kfnetlist-to-SAX-dictionary conversion anywhere in the canonical path.
+  **Exit:** native objects are the single topology representation throughout
+  hierarchy processing, with no conversion back into the legacy netlist schema.
+
+### 4. Keep `.pic.yml` an input format, not a second simulation engine
+
+- [ ] Make the primary `.pic.yml` loading path an adapter that returns native
+  kfnetlist objects/hierarchies. Preserve suffix discovery, custom extension,
+  root selection, name cleaning, and duplicate rejection; document loader return
+  changes instead of retaining dict returns as an architectural constraint.
+  Add numerical end-to-end multi-file `.pic.yml` tests.
+- [ ] Translate legacy shorthand instances, `{p1,p2}` nets, connections, route
+  links, `columns`/`rows`, and zero-based references into native kfnetlist objects.
+  Populate native `cell` references for known legacy subcircuit references and
+  preserve explicit factory metadata when supplied; never infer lost factories
+  from suffixes. Preserve legacy `info -> settings` precedence in this adapter only.
+- [ ] Add explicit `modules`/`toplevel` document support without confusing it with
+  a recursive dictionary. Define root-argument precedence, one-based native
+  versus zero-based legacy arrays, and retained layout/module metadata.
+  Preserve or explicitly reject unsupported expressions; do not invent YAML
+  expression evaluation or silently drop route links.
+  **Exit:** equivalent legacy YAML, dict, and native fixtures simulate identically;
+  unsupported document features produce precise errors rather than altered physics.
+
+### 5. Resolve models before traversing implementation subcircuits
+
+- [ ] Centralize precedence: direct instance binding → explicit cell override →
+  qualified/unambiguous factory binding → referenced child cell → diagnostic.
+  Use it for DAG construction, required-model reporting, and circuit building.
+  Models replacing a subtree must not require that subtree's leaf models.
+- [ ] Keep compiled child circuits keyed by cell identity, not factory identity.
+  Verify distinct variant settings, nested/global overrides, shared subcircuits,
+  exact numbered overrides, namespace collisions, cycles, and optical feedback.
+- [ ] Replace the issue xfail with passing canonical/explicit-metadata acceptance
+  and a legacy ambiguity test once supported. Preserve the explicit-alias control;
+  raw legacy data with lost provenance must not be "fixed" by suffix guessing.
+  **Exit:** both analytical variants and no-model hierarchical fallback are
+  numerically correct, and required-model diagnostics use the same resolver.
+
+### 6. Migrate transforms and make net lowering explicit
+
+- [ ] Make array expansion, pruning, rename/flatten, and probe traversal operate
+  on and return native topology, preserving both identities and instance settings.
+  Use native operations where their semantics match SAX's requirements; do not
+  convert through legacy dictionaries to reuse old transforms. Adapt model
+  signature generation and test input isolation. Define behavior for probes
+  inside an analytically replaced opaque subtree.
+- [ ] Retain native net membership and declared ports until lowering. Characterize
+  n-terminal nets, repeated endpoints, aliases, singleton/unconnected ports, and
+  external-only nets. Prove legacy KLU parity and keep other backend restrictions;
+  unsupported cases must error, not silently become arbitrary chains/splitters.
+  **Exit:** transform equivalence and backend-lowering fixtures pass, including
+  arrays/probes and multiply connected cases; no solver mathematics is changed.
+
+### 7. Switch the internal default and verify compatibility
+
+- [ ] Complete the native circuit path and retire the old internal netlist schema.
+  Keep supported legacy input adapters pointing into kfnetlist, not a parallel
+  legacy simulation path. Document public loader/parser/type changes and isolate
+  any explicitly retained compatibility wrappers.
+- [ ] Add an architectural regression: native circuit construction must succeed
+  with the old kfnetlist-to-SAX adapter disabled. Assert that `.pic.yml` loading
+  and topology transforms return native types and that no legacy schema coercion
+  is used between native input and numerical backend lowering.
+- [ ] Add the approved dependency/version policy, deliberately update the lockfile,
+  and run `uv lock --check` plus isolated installation/import tests on supported
+  Python/OS combinations. Keep layout extraction dependencies out of core imports.
+- [ ] Run focused identity/YAML/parser/transform/backend suites, smoke (<10s locally),
+  and full `src/tests` including notebooks. Compare KLU/FG results, broadcasting,
+  JIT, and real-objective gradients across equivalent input formats.
+- [ ] Update baseline specs, user docs, migration examples, and deprecation notes
+  only for implemented behavior. Explain exact model aliases for old ambiguous
+  exports and preferred identity-preserving extraction for new designs.
+  **Exit:** all acceptance cases pass; report skips/unsupported features honestly.
+
+## Stop conditions / non-goals
+
+Do not implement this entire plan merely to complete the investigation. Before
+implementation, settle the material API/dependency decisions in slice 1. If an
+upstream identity API, release/wheel support, or net-lowering parity blocks a
+slice, stop before switching the canonical path; record the minimal failing
+fixture, attempted approach, blocker, and decision/upstream release needed.
+
+This is not a solver rewrite, layout-routing engine, protobuf mandate, arbitrary
+parameter-expression interpreter, or permission to discard `.pic.yml` support.
+Do not modify the sibling kfnetlist repository without separate authorization.

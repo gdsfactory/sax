@@ -51,6 +51,15 @@ Hierarchy must be acyclic even when optical wiring has feedback. Explicit
 acyclicity validation raises `ValueError` for recursive component definitions;
 `test_hierarchy_validation.py` distinguishes these from valid optical feedback.
 
+Known identity limitation ([#120](https://github.com/gdsfactory/sax/issues/120)):
+`component` serves as both model key and recursive cell key. Counted gdsfactory
+hierarchy variants can silently fall back to layout subcircuits instead of their
+shared analytical model. `test_counted_hierarchy_model_identity` in the smoke
+suite records this with a strict numerical xfail and a passing explicit-alias
+control. Separate factory/cell identities and canonical kfnetlist topology are
+[proposed](changes/kfnetlist-canonical.md), not implemented; suffix stripping is
+not a safe general solution.
+
 Array instances expand to `name<column.row>`. References can infer/patch array
 extents. Evaluation uses the base name's settings for every element; this is not
 independent per-element parameter addressing. Array patching can mutate the input
