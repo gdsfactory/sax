@@ -59,10 +59,11 @@ Reader/writer directions are tested independently; related input fixes share a c
     Reproduced: the temporary `.dat` extension causes scikit-rf to reject it.
   - [x] Test and repair `convert_to_wavelength=False`. Inspected: the frequency
     coordinate is omitted during xarray construction.
-- [ ] **Handle zero-variance neural-fit columns.** Inspected: feature/target
+- [x] **Handle zero-variance neural-fit columns.** Inspected: feature/target
   normalization divides by zero for constant columns. Decide rejection versus
   supported constant-column handling and test finite results or clear errors.
-  Source: `src/sax/fit.py`.
+  Source: `src/sax/fit.py`. Unit scale for constant columns; predictions preserve
+  DataFrame indices. Degenerate-fit/export tests plus smoke: **8 passed**.
 - [ ] **Define safe Lumerical writer file semantics.** Inspected: the writer opens
   in append mode, including deterministic temporary paths. Test repeated writes,
   choose/document overwrite versus append behavior, and clean up temporary output.

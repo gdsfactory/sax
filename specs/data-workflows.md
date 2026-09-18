@@ -94,10 +94,12 @@ Defaults include one hidden layer of width 10, tanh, seed 42, and 1000 epochs.
 This is regression, not a constraint enforcing passivity or causality.
 
 Array prediction returns target arrays; DataFrame prediction appends `<target>_pred`
-columns. Symbolic export requires an activation name supported by SymPy and can
+columns while preserving the input index. Symbolic export requires an activation name supported by SymPy and can
 render Python/JAX functions. `eval_neural_fit` executes generated source; do not
-feed untrusted identifiers/fit artifacts into that path. Constant columns produce
-zero standard deviation without a guard, so nonfinite fits are possible.
+feed untrusted identifiers/fit artifacts into that path. Constant feature/target
+columns use unit standardization scale for training, prediction, and export.
+`test_fit_degenerate.py` verifies finite fits, nondefault DataFrame indices, and
+export/prediction equivalence for all constant/nonconstant feature/target combinations.
 
 `mse` is mean squared absolute error. `huber_loss` implements the smooth
 pseudo-Huber expression `mean(delta**2*(sqrt(1+(abs(x-y)/delta)**2)-1))`, not the
@@ -106,8 +108,9 @@ whose keys start with `w` or `b`; it assumes at least one contributing element.
 Return annotations saying `float` do not force JAX scalar results into Python floats.
 
 Evidence: [`fit.py`](../src/sax/fit.py), [`loss.py`](../src/sax/loss.py).
-Import tests do not establish training convergence, export equivalence, degenerate
-input handling, or prediction index alignment; these need targeted tests when changed.
+Import tests alone do not establish training convergence; targeted degenerate-data
+and export checks supplement them. Arbitrary malformed/nonfinite datasets are not
+covered by the constant-column policy.
 
 ## Supporting utilities
 
