@@ -54,9 +54,13 @@ extents. Evaluation uses the base name's settings for every element; this is not
 independent per-element parameter addressing. Array patching can mutate the input
 before subsequent copying: do not assume the whole constructor is side-effect-free.
 
-`flatten_netlist` separately inlines children using `~` by default. It should not
-be assumed equivalent to hierarchical construction for every netlist feature;
-its handling of `nets` and metadata is incomplete (see open questions).
+`flatten_netlist` separately inlines children using `~` by default. Both
+`connections` and `nets` endpoints are rewritten, including links within one child,
+and net names/settings are retained. Use `sep="__"` when constructing a circuit
+from the result: the legacy `~` separator is not a valid model-signature identifier.
+Instance renaming updates both wiring formats without mutating input. Flattening
+is not a general hierarchical placement/settings composition API.
+Regression tests: `src/tests/test_netlist_transforms.py`.
 
 ## Evaluation and settings precedence
 

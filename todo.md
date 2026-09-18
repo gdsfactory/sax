@@ -17,10 +17,12 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
   an asymmetric fixture reverses `S21` and `S12`. Check the writer independently
   against an external fixture; a self-round-trip could conceal matching errors.
   Source: `src/sax/parsers/touchstone.py`.
-- [ ] **Make netlist transformations handle `nets` consistently.** Inspected:
+- [x] **Make netlist transformations handle `nets` consistently.** Inspected:
   hierarchical flattening handles `connections` but not equivalent `nets`, and
   instance renaming leaves references inside `nets` unchanged. Add equivalence and
   renamed-reference tests. Source: `src/sax/netlists.py`.
+  Regression: `test_netlist_transforms.py`; focused suite plus smoke: **12 passed**.
+  Circuit equivalence uses identifier-safe `sep="__"`; legacy `~` names are export-only.
 - [ ] **Validate and correct forward-only propagation on reconvergent paths.**
   Inspected: BFS-layer propagation may miss contributions arriving along longer
   paths after a node has propagated. Compare unequal-depth feed-forward fixtures

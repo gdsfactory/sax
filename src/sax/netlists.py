@@ -175,6 +175,20 @@ def rename_instances(
     new["placements"] = {
         mapping.get(k, k): v for k, v in net.get("placements", {}).items()
     }
+    if "nets" in net:
+
+        def rename_endpoint(endpoint: str) -> str:
+            instance, port = endpoint.split(",")
+            return f"{mapping.get(instance, instance)},{port}"
+
+        new["nets"] = [
+            {
+                **link,
+                "p1": rename_endpoint(link["p1"]),
+                "p2": rename_endpoint(link["p2"]),
+            }
+            for link in net["nets"]
+        ]
     return {**net, **new}
 
 
@@ -289,26 +303,39 @@ def _flatten_netlist_into(  # noqa: PLR0912,C901
             net["instances"][f"{name}{sep}{iname}"] = iinstance
         ports = {k: f"{name}{sep}{v}" for k, v in child_net.get("ports", {}).items()}
         net["connections"] = net.get("connections", {})
-        for ip1, ip2 in list(net["connections"].items()):
-            n1, p1 = ip1.split(",")
-            n2, p2 = ip2.split(",")
-            if n1 == name:
-                del net["connections"][ip1]
-                if p1 not in ports:
-                    warnings.warn(
-                        f"Port {ip1} not found. Connection {ip1}<->{ip2} ignored.",
-                        stacklevel=2,
-                    )
-                    continue
-                net["connections"][ports[p1]] = ip2
-            elif n2 == name:
-                if p2 not in ports:
-                    warnings.warn(
-                        f"Port {ip2} not found. Connection {ip1}<->{ip2} ignored.",
-                        stacklevel=2,
-                    )
-                    continue
-                net["connections"][ip1] = ports[p2]
+
+        def resolve_endpoint(endpoint: str) -> str | None:
+            instance_name, port_name = endpoint.split(",")
+            if instance_name != name:
+                return endpoint
+            if port_name not in ports:
+                warnings.warn(
+                    f"Port {endpoint} not found. Reference ignored.", stacklevel=2
+                )
+                return None
+            return ports[port_name]
+
+        connections = {}
+        for ip1, ip2 in net["connections"].items():
+            p1, p2 = resolve_endpoint(ip1), resolve_endpoint(ip2)
+            if p1 is not None and p2 is not None:
+                connections[p1] = p2
+        net["connections"] = connections
+        if "nets" in net or "nets" in child_net:
+            nets: sax.Nets = []
+            for link in net.get("nets", []):
+                p1, p2 = resolve_endpoint(link["p1"]), resolve_endpoint(link["p2"])
+                if p1 is not None and p2 is not None:
+                    nets.append({**link, "p1": p1, "p2": p2})
+            nets.extend(
+                {
+                    **link,
+                    "p1": f"{name}{sep}{link['p1']}",
+                    "p2": f"{name}{sep}{link['p2']}",
+                }
+                for link in child_net.get("nets", [])
+            )
+            net["nets"] = nets
         child_net["connections"] = child_net.get("connections", {})
         for ip1, ip2 in child_net["connections"].items():
             net["connections"][f"{name}{sep}{ip1}"] = f"{name}{sep}{ip2}"
