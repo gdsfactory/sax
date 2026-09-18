@@ -42,11 +42,12 @@ reused; numerical values are assembled and solved at evaluation time. Topology
 indices are made concrete NumPy arrays during discovery where possible, while
 S-values remain JAX arrays.
 
-Batch values are broadcast to a shape chosen from the instance values, flattened
-for solving, then reshaped back. The implementation chooses the highest-rank
-instance batch shape, not a general joint broadcast shape. Equal-rank complementary
-shapes such as `(N, 1)` and `(1, M)` are not a guaranteed supported circuit sweep.
-Do not extrapolate S-dictionary broadcasting into universal backend broadcasting.
+Batch values broadcast to the joint NumPy/JAX-compatible batch shape, are flattened
+for solving, then reshaped back. Complementary `(N, 1)` and `(1, M)` sweeps yield
+`(N, M)`; incompatible shapes raise `ValueError`. This does not extend the same
+shape contract to the path-based additive/forward backends.
+Regression: `src/tests/test_backend_broadcasting.py` covers scalar/array mixtures,
+complementary/multiaxis shapes, KLU/FG agreement, JIT, and gradients.
 
 Evidence: [`klu.py`](../src/sax/backends/klu.py), especially
 `_scoo_with_numpy_indices`, `analyze_circuit_klu`, `evaluate_circuit_klu`.

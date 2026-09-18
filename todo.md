@@ -30,10 +30,12 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
   topologies. Source: `src/sax/backends/forward_only.py`.
   Resolved with topological accumulation and explicit cycle rejection;
   `test_forward_backend.py` plus smoke: **6 passed**.
-- [ ] **Define and implement circuit-wide batch broadcasting.** Inspected: KLU
+- [x] **Define and implement circuit-wide batch broadcasting.** Inspected: KLU
   chooses a highest-rank instance shape rather than a joint broadcast shape.
   Test `(N, 1)` with `(1, M)`, scalar/array mixtures, and incompatible shapes.
   Source: `src/sax/backends/klu.py`.
+  Joint broadcast shape implemented; `test_backend_broadcasting.py` plus smoke:
+  **13 passed**, including JIT and gradient checks.
 
 Touchstone resolution: `src/tests/test_touchstone.py` plus smoke: **13 passed**.
 Reader/writer directions are tested independently; related input fixes share a commit.

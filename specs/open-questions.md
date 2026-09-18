@@ -32,7 +32,8 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 | Unconnected probes actually insert the four-port model and expose both taps, contrary to the alias-only docstring | **Inspected and covered by passing tests**; `expand_probes`, `test_probe_on_truly_unconnected_port` in [`test_probes.py`](../src/tests/test_probes.py) | Likely documentation correction; preserve tested behavior unless deliberately changed |
 | Recursive YAML discovery uses `folder_path.rglob(ext)`, with default `.pic.yml`, rather than a suffix wildcard | **Inspected**; [`utils.py`](../src/sax/utils.py), `load_recursive_netlist` | Add a multi-file fixture and decide supported naming/discovery rules |
 
-KLU batch-shape selection is documented in [backends](backends.md).
+KLU now computes a joint broadcast shape, verified by `test_backend_broadcasting.py`;
+see [backends](backends.md).
 Forward BFS was replaced with topological accumulation; unequal-depth reconvergence,
 JIT/gradients, and cycle rejection are covered by `test_forward_backend.py`.
 

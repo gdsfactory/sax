@@ -267,8 +267,7 @@ def evaluate_circuit_klu(
     for name, _ in dummy_pms:
         _, _, sx, ports_map = sax.scoo(instances[name])
         Sx.append(sx)
-        if len(sx.shape[:-1]) > len(batch_shape):
-            batch_shape = sx.shape[:-1]
+        batch_shape = jnp.broadcast_shapes(batch_shape, sx.shape[:-1])
         idx += len(ports_map)
 
     Sx = jnp.concatenate(
