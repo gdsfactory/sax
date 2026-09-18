@@ -103,8 +103,8 @@ def _scan_legacy_arrays(flat: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
         array = inst.get("array") if isinstance(inst, Mapping) else None
         if array:
             sizes[str(name)] = (
-                max(int(array.get("columns", 1)), 1),
-                max(int(array.get("rows", 1)), 1),
+                max(int(array.get("columns", array.get("num_a", 1))), 1),
+                max(int(array.get("rows", array.get("num_b", 1))), 1),
             )
 
     endpoints: list[str] = []
@@ -114,6 +114,9 @@ def _scan_legacy_arrays(flat: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
         endpoints.append(str(net["p1"]))
         endpoints.append(str(net["p2"]))
     endpoints.extend(str(v) for v in (flat.get("ports") or {}).values())
+    for bundle in (flat.get("routes") or {}).values():
+        for source, target in (bundle.get("links") or {}).items():
+            endpoints.extend((str(source), str(target)))
 
     for endpoint in endpoints:
         base, _, col, row = _split_legacy_endpoint(endpoint)
@@ -246,16 +249,17 @@ def deserialize_netlist(data: Mapping[str, Any]) -> Netlist:
 def to_hierarchy(
     netlist: object,
     *,
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     settings_table: HierarchySettings | None = None,
 ) -> tuple[NativeHierarchy, str]:
     """Normalize supported input into ``(cells, root)``."""
+    flat_name = top_level_name if top_level_name is not None else "top_level"
     if is_native(netlist):
-        return {top_level_name: netlist}, top_level_name
+        return {flat_name: netlist}, flat_name
 
     if is_native_hierarchy(netlist):
         cells = dict(netlist)
-        root = top_level_name if top_level_name in cells else next(iter(cells))
+        root = _select_root(cells, top_level_name)
         return cells, root
 
     if isinstance(netlist, str):
@@ -272,19 +276,26 @@ def to_hierarchy(
 
     if isinstance(netlist, Mapping):
         data = dict(netlist)
+        if "modules" in data:
+            modules = data["modules"]
+            if not isinstance(modules, Mapping) or not modules:
+                msg = "PIC modules must be a nonempty mapping of cell definitions."
+                raise ValueError(msg)
+            for name, module in modules.items():
+                _validate_pic_module(module, str(name))
+            root = _select_root(modules, top_level_name, preferred=data.get("toplevel"))
+            return to_hierarchy(
+                modules, top_level_name=root, settings_table=settings_table
+            )
         if "instances" in data:
             if _looks_native(data):
-                return {top_level_name: deserialize_netlist(data)}, top_level_name
+                return {flat_name: deserialize_netlist(data)}, flat_name
             instance_settings = {} if settings_table is not None else None
             if settings_table is not None:
-                settings_table[top_level_name] = instance_settings
+                settings_table[flat_name] = instance_settings
             return (
-                {
-                    top_level_name: from_legacy_flat(
-                        data, settings_table=instance_settings
-                    )
-                },
-                top_level_name,
+                {flat_name: from_legacy_flat(data, settings_table=instance_settings)},
+                flat_name,
             )
 
         cells: NativeHierarchy = {}
@@ -302,7 +313,7 @@ def to_hierarchy(
             else:
                 msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
                 raise TypeError(msg)
-        root = top_level_name if top_level_name in cells else next(iter(cells))
+        root = _select_root(cells, top_level_name)
         return cells, root
 
     msg = f"Cannot interpret {type(netlist)} as a netlist."
@@ -677,61 +688,100 @@ def plan_hierarchical_probes(
     return top, per_cell, paths
 
 
+def _select_root(
+    cells: Mapping[str, Any],
+    requested: str | None,
+    *,
+    preferred: str | None = None,
+) -> str:
+    if not cells:
+        msg = "Netlist hierarchy must contain at least one cell."
+        raise ValueError(msg)
+    selected = requested if requested is not None else preferred
+    if selected is not None:
+        if selected not in cells:
+            msg = f"Unknown top-level cell {selected!r}; available cells: {list(cells)!r}."
+            raise ValueError(msg)
+        return selected
+    return "top_level" if "top_level" in cells else next(iter(cells))
+
+
+def _reject_pic_expressions(value: object, path: str) -> None:
+    if isinstance(value, str) and "${" in value:
+        msg = f"Unsupported PIC expression at {path}: {value!r}. Supply numerical settings."
+        raise ValueError(msg)
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            _reject_pic_expressions(child, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _reject_pic_expressions(child, f"{path}[{index}]")
+
+
+def _validate_pic_module(module: object, name: str) -> None:
+    if not isinstance(module, Mapping):
+        msg = f"PIC module {name!r} must be a mapping."
+        raise TypeError(msg)
+    _reject_pic_expressions(module, name)
+    for field in ("settings", "info", "metadata"):
+        if module.get(field):
+            msg = (
+                f"PIC module {name!r}: module-level {field!r} is unsupported by "
+                "native loaders; supply instance settings or retain the original "
+                "document with sax.load_netlist."
+            )
+            raise ValueError(msg)
+
+
 def load_pic_yaml(
     content: str | Mapping[str, Any],
+    *,
+    top_level_name: str | None = None,
 ) -> tuple[NativeHierarchy, str]:
-    """Load a PIC document (``.pic.yml`` mapping) into a native hierarchy.
+    """Load legacy/PIC document data into native cells and an explicit root.
 
-    Accepts the legacy flat/recursive SAX mapping and the ``modules``/``toplevel``
-    document shape. Returns ``(cells, root)``.
+    An explicit root wins over document ``toplevel``. Legacy root settings remain
+    ignored for compatibility; module-document settings/metadata and expressions
+    are rejected when they cannot be represented by native connectivity.
     """
     import yaml
 
-    if isinstance(content, str):
-        data = yaml.safe_load(content)
-    else:
-        data = dict(content)
+    data = yaml.safe_load(content) if isinstance(content, str) else dict(content)
     if not isinstance(data, Mapping):
         msg = f"PIC document must be a mapping, got {type(data)}."
         raise TypeError(msg)
-
-    if "modules" in data:
-        modules = data["modules"]
-        toplevel = data.get("toplevel")
-        cells = {
-            str(name): from_legacy_flat(module) for name, module in modules.items()
-        }
-        if toplevel is None:
-            toplevel = next(iter(cells))
-        if toplevel not in cells:
-            msg = f"Unknown toplevel module {toplevel!r}."
-            raise ValueError(msg)
-        return cells, toplevel
-
-    if "instances" in data:
-        return {"top_level": from_legacy_flat(data)}, "top_level"
-
-    cells = {str(name): from_legacy_flat(flat) for name, flat in data.items()}
-    return cells, next(iter(cells))
+    _reject_pic_expressions(data, "document")
+    return to_hierarchy(data, top_level_name=top_level_name)
 
 
 def load_native_netlist(content_or_path: object) -> Netlist:
-    """Load a single native netlist from YAML content, a path, or a mapping."""
+    """Load a single native netlist; use ``load_pic_yaml`` for a hierarchy."""
     from pathlib import Path
 
     if isinstance(content_or_path, Netlist):
         return content_or_path
     if isinstance(content_or_path, Mapping):
-        cells, root = load_pic_yaml(content_or_path)
-        return cells[root]
-    if hasattr(content_or_path, "read"):
-        content: object = content_or_path.read()  # type: ignore[union-attr]
-    elif isinstance(content_or_path, (str, Path)) and "\n" not in str(content_or_path):
-        path = Path(str(content_or_path))
-        content = path.read_text() if path.exists() else str(content_or_path)
-    else:
         content = content_or_path
-    cells, root = load_pic_yaml(content)  # type: ignore[arg-type]
+    elif hasattr(content_or_path, "read"):
+        content = content_or_path.read()
+    elif isinstance(content_or_path, Path):
+        content = content_or_path.read_text()
+    elif isinstance(content_or_path, str):
+        content = content_or_path
+        if "\n" not in content:
+            try:
+                path = Path(content)
+                if path.is_file():
+                    content = path.read_text()
+            except OSError:
+                pass  # Long single-line YAML/JSON is content, not a filename.
+    else:
+        msg = f"Cannot load native netlist from {type(content_or_path)}."
+        raise TypeError(msg)
+    cells, root = load_pic_yaml(content)
+    if len(cells) != 1:
+        msg = "Document contains a hierarchy; use native.load_pic_yaml to retain all cells."
+        raise ValueError(msg)
     return cells[root]
 
 
@@ -739,29 +789,34 @@ def load_native_recursive_netlist(
     top_level_path: object,
     ext: str = ".pic.yml",
 ) -> tuple[NativeHierarchy, str]:
-    """Load a directory of PIC YAML files into a native hierarchy.
-
-    Mirrors ``sax.load_recursive_netlist`` discovery (suffix match, sorted,
-    duplicate rejection) but returns ``(cells, root)`` with native objects.
-    """
+    """Load native PIC cells with normalized names and duplicate rejection."""
     from pathlib import Path
 
-    top_level_path = Path(str(top_level_path)).resolve()
-    folder_path = top_level_path.parent
+    from .utils import clean_string
 
-    def _net_name(path: Path) -> str:
-        return path.name.removesuffix(ext)
+    top_path = Path(str(top_level_path)).resolve()
 
-    root = _net_name(top_level_path)
-    cells: NativeHierarchy = {root: load_native_netlist(top_level_path)}
-    for path in sorted(folder_path.rglob(f"*{ext}")):
-        if not path.is_file() or path.resolve() == top_level_path:
+    def read_cells(path: Path) -> tuple[NativeHierarchy, str]:
+        import yaml
+
+        data = yaml.safe_load(path.read_text())
+        loaded, root = load_pic_yaml(data)
+        if "instances" in data:
+            root = clean_string(path.name.removesuffix(ext))
+            loaded = {root: next(iter(loaded.values()))}
+        return loaded, root
+
+    cells, root = read_cells(top_path)
+    cells = {root: cells[root], **cells}
+    for path in sorted(top_path.parent.rglob(f"*{ext}")):
+        if not path.is_file() or path.resolve() == top_path:
             continue
-        name = _net_name(path)
-        if name in cells:
-            msg = f"Duplicate recursive netlist component name {name!r}: {path}."
-            raise ValueError(msg)
-        cells[name] = load_native_netlist(path)
+        loaded, _ = read_cells(path)
+        for name, nl in loaded.items():
+            if name in cells:
+                msg = f"Duplicate recursive netlist component name {name!r}: {path}."
+                raise ValueError(msg)
+            cells[name] = nl
     return cells, root
 
 

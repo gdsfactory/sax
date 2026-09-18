@@ -92,8 +92,12 @@ def _native_issue120_fixture() -> dict:
         return nl
 
     top = PlacedNetlist()
-    top.create_inst("a", kcl="D", component="coupled", settings={"gain": 0.2}, cell="coupled_a")
-    top.create_inst("b", kcl="D", component="coupled", settings={"gain": 0.3}, cell="coupled_b")
+    top.create_inst(
+        "a", kcl="D", component="coupled", settings={"gain": 0.2}, cell="coupled_a"
+    )
+    top.create_inst(
+        "b", kcl="D", component="coupled", settings={"gain": 0.3}, cell="coupled_b"
+    )
     for name in ("a_in", "a_out", "b_in", "b_out"):
         top.create_port(name)
     top.create_net(port(name="a_in"), ref(instance="a", port="in0"))
@@ -154,4 +158,6 @@ def test_legacy_counted_names_remain_ambiguous() -> None:
     np.testing.assert_allclose(result["a_in", "a_out"], 0.2 * jnp.exp(1.55j))
     # No factory provenance: the counted variant uses the layout subnet.
     np.testing.assert_allclose(result["b_in", "b_out"], 0.0)
-
+    # An explicit alias supplies the missing provenance without suffix guessing.
+    aliased, _ = sax.circuit(recnet, {**models, "coupled2": _component}, backend="klu")
+    np.testing.assert_allclose(aliased(wl=1.55)["b_in", "b_out"], 0.3 * jnp.exp(1.55j))

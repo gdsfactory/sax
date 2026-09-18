@@ -8,16 +8,17 @@ chat, not an approval ceremony or a new spec file.
 ## work.md
 
 Treat `work.md` as a living plan that I can later give you as an execution goal.
-Organize it into ordered stages with a clear outcome, task checkboxes, and
-verification criteria. Distinguish agreed decisions from open questions, and
-preserve relevant findings when reorganizing it. Editing the plan does not by
-itself authorize implementation.
+Organize the work into ordered stages. Give each stage a clear outcome,
+checkboxes for intermediate tasks, and explicit verification criteria.
+Distinguish agreed decisions from open questions and preserve relevant findings
+when reorganizing the plan. Editing the plan alone does not authorize implementation.
 
-While executing the goal, keep `work.md` current with progress, decisions,
+While executing the goal, update `work.md` as you progress: record decisions,
 verification results, and remaining work. Check off tasks only when their stated
-outcome is achieved; record failed or unrun checks explicitly. After completing
-each stage, commit the updated `work.md` together with that stage's related
-changes. This is authorization for those stage commits; exclude unrelated work.
+outcome is achieved; record failed or unrun checks explicitly. A stage is complete
+only when its tasks and verification criteria are satisfied. After completing
+each stage, commit its related changes together with the updated `work.md`.
+This authorizes those stage commits; exclude unrelated work.
 
 ## Specs and skills
 

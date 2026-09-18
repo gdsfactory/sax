@@ -61,8 +61,9 @@ Replace the old internal netlist schema rather than wrapping it with a new
 importer. All hierarchy processing and topology transforms use native objects;
 only numerical backend lowering produces solver-specific structures. Preserve
 supported legacy inputs at the boundary, not their dict representation as the
-simulation engine. Public netlist types and primary loaders should reflect the
-canonical format; document intentional return-type changes.
+simulation engine. Public loaders retain dictionary returns for compatibility;
+explicit `native.load_*` helpers return native objects. Circuit type annotations
+accept both input families.
 
 This requires changes to model resolution and transforms, not just a type alias.
 The current `TopLevelModule.to_netlists()` also needs compatibility handling for
@@ -246,10 +247,9 @@ error or opt-in decomposition policy, never accidental loss of analytical physic
   Current dictionaries/callables remain supported through legacy-to-kfnetlist
   conversion at the boundary; there is only one native circuit-construction path.
   Deserialize kfnetlist dict/JSON into native types, not the legacy SAX schema.
-- Make primary `load_netlist` / `load_recursive_netlist` PIC loading produce native
-  objects/hierarchies. Document public type/return changes and migration examples.
-  If temporary dict-returning compatibility helpers are retained, label and
-  isolate them; preserving their return shapes must not dictate internal design.
+- Keep primary `load_netlist` / `load_recursive_netlist` dictionary returns for
+  compatibility. Explicit `native.load_*` helpers produce native objects and
+  hierarchies. Both input families feed the same native circuit construction path.
 - Keep `.pic.yml` supported, including multi-file directory discovery, top-first
   order, custom suffix, name cleaning, and duplicate rejection. A suffix does not
   uniquely identify a YAML dialect. Add `modules`/`toplevel` support through an
@@ -319,7 +319,7 @@ the canonical path and report the fixture/blocker and upstream change needed.
   lint/type checks: **not run** for this test-and-plan change.
 
 Architectural acceptance must prove that native circuit construction succeeds
-with the old `parse_kfnetlist` conversion disabled; primary PIC loaders and topology
+with the old `parse_kfnetlist` conversion disabled; explicit native PIC loaders and topology
 transforms produce native kfnetlist types; and no legacy netlist-schema coercion
 occurs between native input and backend lowering. Numerical equivalence alone
 is not sufficient if SAX still uses the old schema internally.
@@ -342,7 +342,7 @@ suite including notebooks before declaring the migration implemented.
 | No suffix guessing / no blanket flatten | No such code; `test_legacy_counted_names_remain_ambiguous` documents the ambiguity |
 | Model overrides, missing-model diagnostics | `test_cell_specific_override_beats_factory_model`, `test_missing_model_reports_factory_and_cell` |
 | Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
-| PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
+| Explicit native loaders/transforms produce native; public loaders retain dicts | `test_explicit_native_pic_loader_returns_native` and `test_public_loaders_keep_dicts_native_loaders_keep_hierarchy`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
 | Forward backend removed | `test_backend_selection.py`: explicit rejection, retained KLU/FG reconvergence |
 | Python compatibility | `kfnetlist>=0.3.0,<0.4.0` required; `requires-python = ">=3.12"` (all kfnetlist releases require 3.12); README and classifiers updated |
 | Package/lock validity | `uv lock`, `uv lock --check` pass |
@@ -350,9 +350,9 @@ suite including notebooks before declaring the migration implemented.
 
 ## Remaining work / decision needed
 
-The migration is complete: circuit construction, required-model discovery, and
-native transforms all use kfnetlist objects, and the legacy builder/fallback was
-removed. The only intentional public change is the minimum Python version
-(`>=3.12`), required because no kfnetlist release supports 3.11. If Python 3.11
-support must be restored, a pure-Python compatibility shim or an upstream
-kfnetlist 3.11 release would be needed; neither is currently available.
+Circuit construction, required-model discovery, and native transforms use
+kfnetlist objects; the legacy builder/fallback was removed. Public loaders retain
+dictionary returns. Python >=3.12, mandatory kfnetlist, forward-backend removal,
+and explicit errors for unsupported topology are deliberate compatibility changes.
+The staged completion audit and current verification are maintained in `work.md`;
+historical passing runs above do not establish completion of that remediation.

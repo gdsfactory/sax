@@ -195,3 +195,32 @@ and runtime array settings remain keyed by the base instance name.
 
 Evidence: `src/tests/test_native_topology.py`, `test_probes.py`,
 `test_backend_restrictions.py`, and `test_hierarchy_validation.py`.
+
+## PIC roots and public loader contracts
+
+Public `sax.load_netlist` and `sax.load_recursive_netlist` continue returning
+legacy dictionaries. `native.load_pic_yaml` returns `(cells, root)` and
+`native.load_native_netlist` returns a single native object, rejecting multi-cell
+documents instead of discarding children. Circuit overloads accept native objects,
+JSON, and legacy/PIC mappings.
+
+Root precedence is an explicit `top_level_name`, document `toplevel`, a cell named
+`top_level`, then the first mapping entry. An explicit unknown root is an error.
+Flat input uses the supplied root name or `top_level`. Recursive native file
+loading preserves a module document's root and children, orders the root first,
+normalizes standalone filename stems with `clean_string`, discovers custom suffixes
+recursively, and rejects duplicate cell names.
+
+PIC module-level settings/info/metadata are explicitly rejected by native loading;
+keep the original document with the public loader when these must be retained.
+Legacy flat root settings retain their historical ignored behavior. `${...}`
+expressions are rejected, never evaluated. Instance settings and route links are
+supported. Legacy array endpoints are zero-based; native references use one-based
+`ia`/`ib`, translated during lowering. Declared legacy dimensions accept `columns`/
+`rows` and `num_a`/`num_b`.
+
+Evidence: `test_native_pic.py` exercises public returns, root precedence,
+multifile and multimodule loading, numerical parity, settings overrides, metadata
+rejection, routes, and array indices. `test_native_extraction.py` extracts real
+gdsfactory variants and checks asymmetric factory replacement and distinct child
+fallback without changing caller-owned netlists.

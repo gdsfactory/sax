@@ -439,7 +439,7 @@ def test_circuit_does_not_use_legacy_recursive_netlist_helper(monkeypatch) -> No
     assert ("in0", "out0") in model()
 
 
-def test_public_pic_loaders_produce_native() -> None:
+def test_explicit_native_pic_loader_returns_native() -> None:
     doc = "instances:\n  a:\n    component: wg\nports:\n  in0: a,in0\n  out0: a,out0\n"
     cells, root = native.load_pic_yaml(doc)
     assert isinstance(cells[root], Netlist)

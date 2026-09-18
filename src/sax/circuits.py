@@ -25,11 +25,11 @@ __all__ = ["circuit", "draw_dag", "get_required_circuit_models"]
 
 @overload
 def circuit(
-    netlist: dict[str, Any],
+    netlist: dict[str, Any] | native.Netlist | str,
     models: sax.Models | None = None,
     *,
     backend: sax.BackendLike = "default",
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     ignore_impossible_connections: bool = False,
     probes: dict[str, str] | None = None,
     on_internal_port: Literal["warn", "ignore", "as_probes"] = "warn",
@@ -38,12 +38,12 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any],
+    netlist: dict[str, Any] | native.Netlist | str,
     models: sax.Models | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDict"],
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     ignore_impossible_connections: bool = False,
     probes: dict[str, str] | None = None,
     on_internal_port: Literal["warn", "ignore", "as_probes"] = "warn",
@@ -52,12 +52,12 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any],
+    netlist: dict[str, Any] | native.Netlist | str,
     models: sax.Models | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDense"],
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     ignore_impossible_connections: bool = False,
     probes: dict[str, str] | None = None,
     on_internal_port: Literal["warn", "ignore", "as_probes"] = "warn",
@@ -66,12 +66,12 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any],
+    netlist: dict[str, Any] | native.Netlist | str,
     models: sax.Models | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SCoo"],
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     ignore_impossible_connections: bool = False,
     probes: dict[str, str] | None = None,
     on_internal_port: Literal["warn", "ignore", "as_probes"] = "warn",
@@ -79,12 +79,12 @@ def circuit(
 
 
 def circuit(
-    netlist: dict[str, Any],
+    netlist: dict[str, Any] | native.Netlist | str,
     models: sax.Models | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDict", "SDense", "SCoo"] = "SDict",
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
     ignore_impossible_connections: bool = False,
     probes: dict[str, str] | None = None,
     on_internal_port: Literal["warn", "ignore", "as_probes"] = "warn",
@@ -97,7 +97,8 @@ def circuit(
 
     Args:
         netlist: Circuit netlist specifying instances, connections, and ports.
-            Can be a flat netlist or recursive netlist dictionary.
+            Accepts native Netlist/PlacedNetlist objects, native JSON, legacy
+            dictionaries, or a hierarchy mapping with explicit child cell identities.
         models: Dictionary mapping component names to their model functions.
             If None, models must be provided in the netlist itself.
         backend: Circuit analysis backend to use. Options include "default",
@@ -105,7 +106,8 @@ def circuit(
         return_type: Format of the returned S-matrix. Options: "SDict", "SDense",
             "SCoo". Defaults to "SDict".
         top_level_name: Name of the top-level circuit in recursive netlists.
-            Defaults to "top_level".
+            An explicit name wins over PIC ``toplevel``; otherwise select
+            ``top_level`` when present, then the first hierarchy entry.
         ignore_impossible_connections: If True, ignore connections to missing
             instance ports instead of raising an error. Defaults to False.
         probes: Optional dictionary mapping probe names to instance ports where
@@ -254,7 +256,7 @@ def _circuit_native(
     *,
     backend: sax.Backend,
     return_type: Literal["SDict", "SDense", "SCoo"],
-    top_level_name: str,
+    top_level_name: str | None,
     ignore_impossible_connections: bool,
     probes: dict[str, str] | None,
     on_internal_port: Literal["warn", "ignore", "as_probes"],
@@ -402,7 +404,7 @@ def get_required_circuit_models(
     netlist: sax.AnyNetlist,
     models: dict[str, sax.Model] | None = None,
     *,
-    top_level_name: str = "top_level",
+    top_level_name: str | None = None,
 ) -> list[str]:
     """Determine which component models are required for a given netlist.
 
