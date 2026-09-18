@@ -69,9 +69,10 @@ Reader/writer directions are tested independently; related input fixes share a c
   choose/document overwrite versus append behavior, and clean up temporary output.
   Source: `src/sax/parsers/lumerical.py`. Overwrite paths; string output is
   file-free; input DataFrames are copied. Writer tests plus smoke: **6 passed**.
-- [ ] **Fix or clarify recursive YAML discovery.** Inspected: the default search
+- [x] **Fix or clarify recursive YAML discovery.** Inspected: the default search
   is `rglob(".pic.yml")`, not `rglob("*.pic.yml")`. Add a multi-file fixture and
   verify intended naming/discovery rules. Source: `src/sax/utils.py`.
+  Suffix glob, sorted children, duplicate-name rejection; YAML/smoke: **7 passed**.
 - [ ] **Resolve phase-shifter loss units.** Inspected: attenuation uses
   `loss * length`, but documentation suggests lumped loss. Establish intended
   units and compatibility policy, then align formula, docs, and tests.

@@ -5,7 +5,7 @@
 | API | Baseline behavior |
 | --- | --- |
 | `load_netlist` | Read text/path/file-like content and `yaml.safe_load` it; loading is not full circuit validation |
-| `load_recursive_netlist` | Load the top file and attempt sibling discovery with a configured extension; discovery pattern has an open issue |
+| `load_recursive_netlist` | Load the top file first, then suffix-matching files recursively in sorted order; reject duplicate normalized component names |
 | `parse_kfnetlist` | Accept dictionary, JSON string, or object with `to_dict`; return a one-entry recursive netlist |
 | `parse_kfnetlist_recursive` | Convert a named mapping of such netlists; preserve mapping order |
 | `parse_mosaic` | Read dictionary/YAML/path; map components and properties into instances, nets, external ports |

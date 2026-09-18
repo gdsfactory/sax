@@ -30,7 +30,7 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 | DAG validation uses `is_directed()`, not an acyclicity check | **Inspected**; [`circuits.py`](../src/sax/circuits.py), `_validate_dag` | Cycles may instead fail at root validation/topological sort; define stable diagnostics |
 | **Resolved:** flattening and renaming now rewrite `nets` and preserve net metadata | `test_netlist_transforms.py`: KLU/FG equivalence, metadata, repeated endpoints, input isolation | Legacy `~` flattened names still require a valid identifier separator such as `__` for circuit construction |
 | Unconnected probes actually insert the four-port model and expose both taps, contrary to the alias-only docstring | **Inspected and covered by passing tests**; `expand_probes`, `test_probe_on_truly_unconnected_port` in [`test_probes.py`](../src/tests/test_probes.py) | Likely documentation correction; preserve tested behavior unless deliberately changed |
-| Recursive YAML discovery uses `folder_path.rglob(ext)`, with default `.pic.yml`, rather than a suffix wildcard | **Inspected**; [`utils.py`](../src/sax/utils.py), `load_recursive_netlist` | Add a multi-file fixture and decide supported naming/discovery rules |
+| **Resolved:** recursive YAML loading uses a suffix wildcard and deterministic ordering, preserving the root first | `test_recursive_yaml.py` | Default/custom suffixes, nested files, ignored nonmatches, and duplicate-name rejection tested |
 
 KLU now computes a joint broadcast shape, verified by `test_backend_broadcasting.py`;
 see [backends](backends.md).
