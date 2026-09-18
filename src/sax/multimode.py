@@ -104,7 +104,7 @@ def multimode(
         return _multimode_scoo(scoo_sm, modes=modes)
 
     if (sdense_sm := sax.try_into[sax.SDenseSM](s)) is not None:
-        return _multimode_sdense(sdense_sm)
+        return _multimode_sdense(sdense_sm, modes=modes)
 
     if (s_mm := sax.try_into[sax.STypeMM](s)) is not None:
         return s_mm

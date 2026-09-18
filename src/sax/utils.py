@@ -209,7 +209,7 @@ def load_recursive_netlist(
         # Result: {"main": {...}, "component1": {...}, "component2": {...}}
         ```
     """
-    top_level_path = Path(top_level_path)
+    top_level_path = Path(top_level_path).resolve()
     folder_path = top_level_path.parent
 
     def _net_name(path: Path) -> sax.Name:
@@ -217,8 +217,14 @@ def load_recursive_netlist(
 
     recnet = {_net_name(top_level_path): load_netlist(top_level_path)}
 
-    for path in folder_path.rglob(ext):
-        recnet[_net_name(path)] = load_netlist(path)
+    for path in sorted(folder_path.rglob(f"*{ext}")):
+        if not path.is_file() or path.resolve() == top_level_path:
+            continue
+        name = _net_name(path)
+        if name in recnet:
+            msg = f"Duplicate recursive netlist component name {name!r}: {path}."
+            raise ValueError(msg)
+        recnet[name] = load_netlist(path)
 
     return recnet
 

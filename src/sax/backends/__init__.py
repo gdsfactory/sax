@@ -1,8 +1,7 @@
-"""SAX Backends."""
+"""SAX backends. KLU is the default and klujax is a required dependency."""
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 
 import sax
@@ -55,20 +54,6 @@ analyze_instances = analyze_instances_klu
 analyze_circuit = analyze_circuit_klu
 evaluate_circuit = evaluate_circuit_klu
 default_backend = "klu"
-
-try:
-    import klujax  # noqa: F401
-
-except ImportError:
-    analyze_instances = analyze_instances_fg
-    analyze_circuit = analyze_circuit_fg
-    evaluate_circuit = evaluate_circuit_fg
-    default_backend = "filipsson_gunnar"
-    warnings.warn(
-        "klujax not found. Please install klujax for "
-        "better performance during circuit evaluation!",
-        stacklevel=2,
-    )
 
 
 __all__ = [

@@ -101,13 +101,14 @@ def evaluate_circuit_forward(
     """Evaluate circuit S-matrix using forward-only propagation.
 
     Computes the circuit response using a simplified forward propagation approach.
-    This method assumes unidirectional signal flow and uses breadth-first search
-    to propagate signals through the circuit without considering reflections.
+    This method assumes unidirectional signal flow and propagates signals in
+    topological order, accumulating all incoming paths before visiting each node.
+    Directed cycles raise ValueError; reflections are not modeled.
 
     The algorithm:
     1. Creates a directed graph representation of the circuit
     2. For each input port, injects a unit signal
-    3. Uses BFS to propagate signals through the circuit
+    3. Uses topological order to propagate signals through the circuit
     4. Records the signal levels at output ports
 
     Args:
@@ -143,24 +144,26 @@ def evaluate_circuit_forward(
     graph = nx.DiGraph()
     graph.add_edges_from(edges)
 
-    # Dictionary to store signals at each node
+    try:
+        ordered_nodes = list(nx.topological_sort(graph))
+    except nx.NetworkXUnfeasible as exc:
+        msg = "The forward backend requires an acyclic directed signal graph."
+        raise ValueError(msg) from exc
+
+    # Accumulate all predecessor contributions before propagating a node.
     circuit_sdict = {}
     for in_port in ports:
         if in_port.startswith("in"):
             node_signals = {("", in_port): 1}
-            bfs_output = nx.bfs_layers(graph, ("", in_port))
-            for layer in bfs_output:
-                layer_signals = {}
-                for node in layer:
-                    if node in node_signals:
-                        signal = node_signals[node]
-                        for neighbor in graph.successors(node):
-                            transmission = graph[node][neighbor]["transmission"]
-                            if neighbor in layer_signals:
-                                layer_signals[neighbor] += signal * transmission
-                            else:
-                                layer_signals[neighbor] = signal * transmission
-                node_signals.update(layer_signals)
+            for node in ordered_nodes:
+                if node not in node_signals:
+                    continue
+                signal = node_signals[node]
+                for neighbor in graph.successors(node):
+                    transmission = graph[node][neighbor]["transmission"]
+                    node_signals[neighbor] = (
+                        node_signals.get(neighbor, 0) + signal * transmission
+                    )
             sdict = {
                 (in_port, p2): v
                 for (p1, p2), v in node_signals.items()

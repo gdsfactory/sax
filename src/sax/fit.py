@@ -59,6 +59,10 @@ def neural_fit(
         loss_fn: The loss function to use for training.
         progress_bar: Whether to show a progress bar during training.
 
+    Notes:
+        Constant feature and target columns use a unit normalization scale,
+        avoiding division by zero. This scale is retained for prediction/export.
+
     Returns:
         Dictionary containing trained model data
 
@@ -79,9 +83,11 @@ def neural_fit(
 
     X_mean = jnp.mean(X, axis=0, keepdims=True)
     X_std = jnp.std(X, axis=0, keepdims=True)
+    X_std = jnp.where(X_std == 0, 1.0, X_std)
 
     Y_mean = jnp.mean(Y, axis=0, keepdims=True)
     Y_std = jnp.std(Y, axis=0, keepdims=True)
+    Y_std = jnp.where(Y_std == 0, 1.0, Y_std)
 
     X_norm = (X - X_mean) / X_std
     Y_norm = (Y - Y_mean) / Y_std
@@ -132,7 +138,7 @@ def neural_fit(
 
         if df is not None:
             pred_cols = np.array([f"{c}_pred" for c in targets])
-            df_pred = pd.DataFrame(np.asarray(Y), columns=pred_cols)
+            df_pred = pd.DataFrame(np.asarray(Y), columns=pred_cols, index=df.index)
             return pd.concat([df, df_pred], axis=1)
 
         return Y
