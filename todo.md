@@ -23,11 +23,13 @@ See [specs/open-questions.md](specs/open-questions.md) for supporting details.
   renamed-reference tests. Source: `src/sax/netlists.py`.
   Regression: `test_netlist_transforms.py`; focused suite plus smoke: **12 passed**.
   Circuit equivalence uses identifier-safe `sep="__"`; legacy `~` names are export-only.
-- [ ] **Validate and correct forward-only propagation on reconvergent paths.**
+- [x] **Validate and correct forward-only propagation on reconvergent paths.**
   Inspected: BFS-layer propagation may miss contributions arriving along longer
   paths after a node has propagated. Compare unequal-depth feed-forward fixtures
   against KLU/FG; implement correct accumulation or explicitly reject unsupported
   topologies. Source: `src/sax/backends/forward_only.py`.
+  Resolved with topological accumulation and explicit cycle rejection;
+  `test_forward_backend.py` plus smoke: **6 passed**.
 - [ ] **Define and implement circuit-wide batch broadcasting.** Inspected: KLU
   chooses a highest-rank instance shape rather than a joint broadcast shape.
   Test `(N, 1)` with `(1, M)`, scalar/array mixtures, and incompatible shapes.

@@ -70,10 +70,11 @@ Only component terms with input names starting `in` and output names starting
 `out*` ports collected. Values are flattened. Connections have directional meaning
 here, unlike KLU/FG's bidirectional interconnects.
 
-Propagation uses BFS layers, not a general topological accumulation algorithm.
-Treat feed-forward topology as a prerequisite, not proof of correctness for every
-DAG: unequal-depth reconvergent paths need explicit checks against KLU or FG.
-Optical `o*` naming does not automatically work with this backend.
+Propagation visits nodes in topological order and accumulates all predecessor
+contributions, including unequal-depth reconvergent paths. Directed cycles raise
+`ValueError`. Optical `o*` naming does not automatically work with this backend.
+Regression: `src/tests/test_forward_backend.py` compares an unequal-depth fixture
+with KLU/FG, checks JIT/gradients, and verifies cycle rejection.
 
 Evidence: [`forward_only.py`](../src/sax/backends/forward_only.py),
 `_graph_edges_directed`, `evaluate_circuit_forward`.
