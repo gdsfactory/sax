@@ -64,10 +64,11 @@ Reader/writer directions are tested independently; related input fixes share a c
   supported constant-column handling and test finite results or clear errors.
   Source: `src/sax/fit.py`. Unit scale for constant columns; predictions preserve
   DataFrame indices. Degenerate-fit/export tests plus smoke: **8 passed**.
-- [ ] **Define safe Lumerical writer file semantics.** Inspected: the writer opens
+- [x] **Define safe Lumerical writer file semantics.** Inspected: the writer opens
   in append mode, including deterministic temporary paths. Test repeated writes,
   choose/document overwrite versus append behavior, and clean up temporary output.
-  Source: `src/sax/parsers/lumerical.py`.
+  Source: `src/sax/parsers/lumerical.py`. Overwrite paths; string output is
+  file-free; input DataFrames are copied. Writer tests plus smoke: **6 passed**.
 - [ ] **Fix or clarify recursive YAML discovery.** Inspected: the default search
   is `rglob(".pic.yml")`, not `rglob("*.pic.yml")`. Add a multi-file fixture and
   verify intended naming/discovery rules. Source: `src/sax/utils.py`.

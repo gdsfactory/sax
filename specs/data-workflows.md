@@ -44,10 +44,10 @@ conversion defaults; do not infer a single global policy.
   v1 full-matrix records supply the inferred port count, and v2 declares its count.
 - `write_touchstone(df, path=None)` returns text or writes a file and returns its
   resolved path. Missing extensions become `.sNp`; mismatched extensions warn.
-- `write_lumerical_dat` returns text or writes a path, but currently opens in append
-  mode. Do not assume overwrite/idempotence or automatic temporary-file cleanup.
-- Touchstone writing copies its input DataFrame; Lumerical normalization can still
-  mutate it. Neither writer is specified as a lossless preservation
+- `write_lumerical_dat` returns text in memory or overwrites a path. Repeated writes
+  do not append duplicate blocks, and string output creates no temporary file.
+  `test_lumerical_writer.py` checks repeatability, input isolation, and parsed values.
+- Both writers copy their input DataFrame. Neither is specified as a lossless preservation
   mechanism for all metadata, labels, reference impedances, or mode information.
 
 Evidence: [`parsers/lumerical.py`](../src/sax/parsers/lumerical.py),

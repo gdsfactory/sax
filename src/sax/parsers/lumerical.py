@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import re
 import warnings
-from hashlib import md5
+from io import StringIO
 from pathlib import Path
-from tempfile import gettempdir
 from textwrap import dedent
 from typing import cast, overload
 
@@ -78,18 +77,13 @@ def write_lumerical_dat(
 
     Args:
         df: DataFrame in tidy format containing S-parameters.
-        path: Path to the output file. If None, the string content is returned
+        path: Path to overwrite with the output. If None, return string content
+            without creating a temporary file. The input DataFrame is not mutated.
 
     Returns:
         Path to the written file or string content if path is None.
     """
-    temppath = None
-    if path is None:
-        temppath = path = (
-            Path(gettempdir()).resolve()
-            / "sax"
-            / f"write_lumerical_{md5(df.to_numpy().tobytes()).hexdigest()}.dat"
-        )
+    df = df.copy()
     in_amp_phi_format, in_wl_format = _validate_columns(df)
     modes = {*df["mode_in"], *df["mode_out"]}
     if in_amp_phi_format:
@@ -112,8 +106,7 @@ def write_lumerical_dat(
     xarr = sax.to_xarray(df, target_names=["s"])
     freq = xarr.coords["f"].to_numpy()
     sparams = xarr.to_numpy()[:, :, :, 0]
-    buf = Path(path).open("a")  # noqa: SIM115
-    try:
+    with StringIO() as buf:
         d = sparams.shape[1]
         for in_ in range(d):
             for out in range(d):
@@ -122,12 +115,13 @@ def write_lumerical_dat(
                 header = f'("port {out + 1}", "TE", 1, "port {in_ + 1}", 1, "transmission")\n'
                 header += f"{temp.shape}"
                 np.savetxt(buf, temp, header=header, comments="")
-    finally:
-        buf.close()
+        content = buf.getvalue()
 
-    if temppath:
-        return temppath.read_text()
-    return Path(path).resolve()
+    if path is None:
+        return content
+    output_path = Path(path).resolve()
+    output_path.write_text(content)
+    return output_path
 
 
 class _SparamsTransformer(Transformer):
