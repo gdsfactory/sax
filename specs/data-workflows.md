@@ -6,9 +6,22 @@
 | --- | --- |
 | `load_netlist` | Read text/path/file-like content and `yaml.safe_load` it; loading is not full circuit validation |
 | `load_recursive_netlist` | Load the top file first, then suffix-matching files recursively in sorted order; reject duplicate normalized component names |
-| `parse_kfnetlist` | Accept dictionary, JSON string, or object with `to_dict`; return a one-entry recursive netlist |
+| `parse_kfnetlist` | Accept dictionary, JSON string, or object with `to_dict`; return a one-entry recursive netlist (legacy dictionary output; retained for compatibility) |
 | `parse_kfnetlist_recursive` | Convert a named mapping of such netlists; preserve mapping order |
+| `native.load_pic_yaml` | Load flat or `modules`/`toplevel` PIC YAML into native kfnetlist objects |
+| `native.load_native_netlist` / `load_native_recursive_netlist` | Native-object PIC loaders |
+| `native.from_legacy_flat` / `from_legacy_recursive` | Adapt legacy SAX dictionaries into native objects |
 | `parse_mosaic` | Read dictionary/YAML/path; map components and properties into instances, nets, external ports |
+
+`sax.circuit` builds every circuit through the native kfnetlist path:
+`native.to_hierarchy` adapts legacy dictionaries, `.pic.yml`/native JSON, and
+native objects into `{cell: Netlist}` plus an optional directed-orientation map,
+and `_circuit_native` lowers them to backend tables. Native input is never turned
+into SAX's legacy dictionary schema for construction. Directed legacy
+`connections` become `legacy_orientation` hints so the `forward` backend keeps
+signal direction; native input without direction raises for that backend. Factory
+`component` models are resolved before descending into a distinct
+`PlacedInstance.cell`.
 
 kfnetlist array references translate 1-based `ia/ib` to zero-based
 `instance<column.row>,port`. Collapsed references to array instances target `<0.0>`.

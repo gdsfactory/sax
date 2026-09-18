@@ -13,7 +13,14 @@ import numpy as np
 
 import sax
 
-from . import native
+try:  # kfnetlist is required for the canonical native path (Python >=3.12 wheels)
+    from . import native
+
+    _NATIVE_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only without kfnetlist
+    native = None  # type: ignore[assignment]
+    _NATIVE_AVAILABLE = False
+
 from .backends import circuit_backends
 from .models.probes import ideal_probe
 from .netlists import (
@@ -173,21 +180,78 @@ def circuit(
     """
     _backend = sax.into[sax.Backend](backend)
 
-    if _is_native_json(netlist):
-        netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
+    if _NATIVE_AVAILABLE:
+        if _is_native_json(netlist):
+            netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
+        instance_models = _extract_instance_models(netlist)
+        prepared = _replace_callable_instances(netlist)
+        merged_models: sax.Models = {**(models or {}), **instance_models}
+        return _circuit_native(
+            prepared,
+            merged_models,
+            backend=_backend,
+            return_type=return_type,
+            top_level_name=top_level_name,
+            ignore_impossible_connections=ignore_impossible_connections,
+            probes=probes,
+            on_internal_port=on_internal_port,
+        )
 
+    # Legacy fallback for environments without kfnetlist (e.g. Python 3.11).
     instance_models = _extract_instance_models(netlist)
-    prepared = _replace_callable_instances(netlist)
-    merged_models: sax.Models = {**(models or {}), **instance_models}
-    return _circuit_native(
-        prepared,
-        merged_models,
-        backend=_backend,
-        return_type=return_type,
+    recnet = into_recnet(
+        netlist,
         top_level_name=top_level_name,
-        ignore_impossible_connections=ignore_impossible_connections,
-        probes=probes,
-        on_internal_port=on_internal_port,
+    )
+    patch_netlist_array_instances(recnet)
+    recnet = sax.into[sax.RecursiveNetlist](recnet)
+    recnet, auto_probes = extract_port_probes(recnet, on_internal_port)
+    if auto_probes:
+        probes = {**(probes or {}), **auto_probes}
+    if probes:
+        recnet = expand_probes(recnet, probes)
+        models = {"_ideal_probe": ideal_probe, **(models or {})}
+    recnet = resolve_array_instances(recnet)
+    recnet = _filter_portless_subnets(recnet)
+    recnet = remove_unused_instances(recnet)
+    _validate_netlist_ports(recnet)
+    dependency_dag = _create_dag(recnet, models, validate=True)
+    models = _validate_models(
+        models or {}, dependency_dag, extra_models=instance_models
+    )
+
+    circuit = None
+    new_models = {}
+    current_models = {}
+    model_names = list(nx.topological_sort(dependency_dag))[::-1]
+    for model_name in model_names:
+        if model_name in models:
+            new_models[model_name] = models[model_name]
+            continue
+
+        flatnet = recnet[model_name]
+        current_models |= new_models
+        new_models = {}
+
+        current_models[model_name] = circuit = _flat_circuit(
+            flatnet["instances"],
+            flatnet.get("connections", {}),
+            flatnet.get("nets", []),
+            flatnet.get("ports", {}),
+            flatnet.get("placements", {}),
+            current_models,
+            _backend,
+            ignore_impossible_connections=ignore_impossible_connections,
+        )
+
+    if circuit is None:
+        msg = "Could not construct circuit (unknown reason)"
+        raise RuntimeError(msg)
+    circuit = _enforce_return_type(circuit, return_type)
+    return circuit, sax.CircuitInfo(
+        dag=dependency_dag,
+        models=current_models,
+        backend=_backend,
     )
 
 
@@ -470,11 +534,19 @@ def get_required_circuit_models(
         ```
     """
     instance_models = _extract_instance_models(netlist)
-    prepared = _replace_callable_instances(netlist)
-    cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
-    merged: sax.Models = {**(models or {}), **instance_models}
-    dependency_dag = _native_dag(cells, root, merged)
-    _, required, _ = _find_missing_models(merged, dependency_dag)
+    if _NATIVE_AVAILABLE:
+        prepared = _replace_callable_instances(netlist)
+        cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
+        merged: sax.Models = {**(models or {}), **instance_models}
+        dependency_dag = _native_dag(cells, root, merged)
+        _, required, _ = _find_missing_models(merged, dependency_dag)
+        return required
+    recnet = into_recnet(netlist)
+    recnet = remove_unused_instances(recnet)
+    dependency_dag = _create_dag(recnet, models, validate=True)
+    _, required, _ = _find_missing_models(
+        models, dependency_dag, extra_models=instance_models
+    )
     return required
 
 
