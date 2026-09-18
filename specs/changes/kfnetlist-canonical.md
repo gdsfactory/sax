@@ -23,23 +23,21 @@ checklist: [`todo.md`](../../todo.md). Existing contracts remain in
 | ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
 | Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
 | Native flatten/rename/prune transforms | `native.flatten_netlist`, `flatten_recursive_netlist`, `rename_instances`, `rename_models`, `remove_unused_instances`; public transforms dispatch to them for native input |
-| Legacy fallback when kfnetlist is unavailable (Python 3.11 / minimal install) | Implemented; `_NATIVE_AVAILABLE` guard |
-| Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and used by the no-kfnetlist fallback; not used for native circuit construction |
-| Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained as public compatibility utilities and fallback |
+| Legacy fallback / old circuit builder | Removed; kfnetlist is required and Python minimum is >=3.12 |
+| Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as an *input* format and adapted into native by `native.to_hierarchy`; no longer used for circuit construction |
+| Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained only as public compatibility utilities for dictionary input; native input dispatches to native implementations |
 
 ### Dependency and Python support
 
-kfnetlist 0.3.0 publishes `cp312-abi3` wheels and declares
-`Requires-Python >= 3.12`, while SAX advertises Python 3.11+. To preserve 3.11
-support without authorization to drop it, kfnetlist is declared as
-`kfnetlist>=0.3.0,<0.4.0; python_version >= '3.12'` and the native import is
-guarded. On 3.12+ it is the canonical path; on 3.11 (or any install without
-kfnetlist) `sax.circuit` uses the **deprecated** legacy adapter and emits a
-`DeprecationWarning`. `src/tests/test_native_fallback.py` covers that path.
-Making the native path mandatory requires either upstream 3.11 wheels or an
-authorized SAX minimum-version bump. `uv lock` and `uv lock --check` pass. This
-remaining deprecated dual path is the main deviation from the "single native
-path" goal and should be removed when kfnetlist ships 3.11.
+kfnetlist is a required dependency (`kfnetlist>=0.3.0,<0.4.0`). Every kfnetlist
+release declares `Requires-Python >= 3.12` and ships only `cp312-abi3` wheels, so
+SAX's minimum Python was raised to `>=3.12` to make the canonical native path
+unconditional. The legacy circuit builder/fallback and the old internal schema
+were removed; `sax.circuit` and `get_required_circuit_models` always build native
+kfnetlist objects, and legacy dictionaries and `.pic.yml` are adapted into native
+first. `uv lock` and `uv lock --check` pass. This is an intentional, documented
+public compatibility change; it can be revisited if kfnetlist ships 3.11 wheels
+or a shim is chosen instead.
 
 ### Directed connections versus undirected nets
 
@@ -353,17 +351,15 @@ suite including notebooks before declaring the migration implemented.
 | Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
 | PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
 | Directed `forward` semantics preserved | `legacy_orientation` + `lower(orientation=...)`; legacy forward tests pass; `test_native_forward_backend_direction_blocker` xfail documents the native limitation |
-| Python compatibility preserved | `kfnetlist ...; python_version >= '3.12'` marker; `_NATIVE_AVAILABLE` guard; `test_native_fallback.py` |
+| Python compatibility | `kfnetlist>=0.3.0,<0.4.0` required; `requires-python = ">=3.12"` (all kfnetlist releases require 3.12); README and classifiers updated |
 | Package/lock validity | `uv lock`, `uv lock --check` pass |
-| Full regression | full `src/tests` incl. notebooks: 419 passed, 1 xfailed |
+| Full regression | full `src/tests` incl. notebooks: 416 passed, 1 xfailed; `uv lock --check` passes |
 
 ## Remaining work / decision needed
 
-The one explicit requirement not fully met is deleting the legacy path: it is
-retained as a **deprecated** no-kfnetlist fallback (it now emits a
-`DeprecationWarning`). This is blocked by kfnetlist 0.3.0's
-`Requires-Python >= 3.12` (no 3.11 wheels, verified for every PyPI release)
-combined with the requirement to preserve Python 3.11 support. Resolving it needs
-either (a) kfnetlist 3.11 wheels, or (b) authorization to raise SAX's minimum
-Python to 3.12. The canonical (kfnetlist-present) path never uses the legacy
-schema, transforms, or builder.
+The migration is complete: circuit construction, required-model discovery, and
+native transforms all use kfnetlist objects, and the legacy builder/fallback was
+removed. The only intentional public change is the minimum Python version
+(`>=3.12`), required because no kfnetlist release supports 3.11. If Python 3.11
+support must be restored, a pure-Python compatibility shim or an upstream
+kfnetlist 3.11 release would be needed; neither is currently available.

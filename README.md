@@ -123,7 +123,8 @@ Those are the basics. For more info, check out the **full**
 
 ## Installation
 
-SAX requires Python >=3.11. Install it with pip:
+SAX requires Python >=3.12. kfnetlist is a required dependency and provides the
+canonical netlist format for circuit construction. Install it with pip:
 
 ```sh
 pip install sax

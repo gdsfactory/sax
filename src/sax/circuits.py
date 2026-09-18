@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import warnings
 from collections.abc import Iterable, Iterator
 from functools import partial
 from typing import Any, Literal, cast, overload
@@ -14,39 +13,14 @@ import numpy as np
 
 import sax
 
-try:  # kfnetlist is required for the canonical native path (Python >=3.12 wheels)
-    from . import native
-
-    _NATIVE_AVAILABLE = True
-except ImportError:  # pragma: no cover - exercised only without kfnetlist
-    native = None  # type: ignore[assignment]
-    _NATIVE_AVAILABLE = False
-
+from . import native
 from .backends import circuit_backends
 from .models.probes import ideal_probe
-from .netlists import (
-    _connections_to_nets,
-    expand_probes,
-    extract_port_probes,
-    remove_unused_instances,
-)
-from .netlists import netlist as into_recnet
+from .netlists import _connections_to_nets
 from .s import get_ports, scoo, sdense, sdict
 from .utils import get_settings, merge_dicts, replace_kwargs, update_settings
 
 __all__ = ["circuit", "draw_dag", "get_required_circuit_models"]
-
-
-def _filter_portless_subnets(
-    netlist: sax.RecursiveNetlist,
-) -> sax.RecursiveNetlist:
-    """Remove sub-netlists that have no ports (except the top-level entry)."""
-    top_level_name = next(iter(netlist))
-    return {
-        name: flatnet
-        for name, flatnet in netlist.items()
-        if name == top_level_name or flatnet.get("ports", {})
-    }
 
 
 @overload
@@ -181,85 +155,20 @@ def circuit(
     """
     _backend = sax.into[sax.Backend](backend)
 
-    if _NATIVE_AVAILABLE:
-        if _is_native_json(netlist):
-            netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
-        instance_models = _extract_instance_models(netlist)
-        prepared = _replace_callable_instances(netlist)
-        merged_models: sax.Models = {**(models or {}), **instance_models}
-        return _circuit_native(
-            prepared,
-            merged_models,
-            backend=_backend,
-            return_type=return_type,
-            top_level_name=top_level_name,
-            ignore_impossible_connections=ignore_impossible_connections,
-            probes=probes,
-            on_internal_port=on_internal_port,
-        )
-
-    # Legacy fallback for environments without kfnetlist (e.g. Python 3.11).
-    warnings.warn(
-        "Building a circuit without kfnetlist uses the deprecated legacy netlist "
-        "path. Install kfnetlist (Python >= 3.12) for the canonical native path; "
-        "this fallback will be removed once kfnetlist supports this Python.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+    if _is_native_json(netlist):
+        netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
     instance_models = _extract_instance_models(netlist)
-    recnet = into_recnet(
-        netlist,
-        top_level_name=top_level_name,
-    )
-    patch_netlist_array_instances(recnet)
-    recnet = sax.into[sax.RecursiveNetlist](recnet)
-    recnet, auto_probes = extract_port_probes(recnet, on_internal_port)
-    if auto_probes:
-        probes = {**(probes or {}), **auto_probes}
-    if probes:
-        recnet = expand_probes(recnet, probes)
-        models = {"_ideal_probe": ideal_probe, **(models or {})}
-    recnet = resolve_array_instances(recnet)
-    recnet = _filter_portless_subnets(recnet)
-    recnet = remove_unused_instances(recnet)
-    _validate_netlist_ports(recnet)
-    dependency_dag = _create_dag(recnet, models, validate=True)
-    models = _validate_models(
-        models or {}, dependency_dag, extra_models=instance_models
-    )
-
-    circuit = None
-    new_models = {}
-    current_models = {}
-    model_names = list(nx.topological_sort(dependency_dag))[::-1]
-    for model_name in model_names:
-        if model_name in models:
-            new_models[model_name] = models[model_name]
-            continue
-
-        flatnet = recnet[model_name]
-        current_models |= new_models
-        new_models = {}
-
-        current_models[model_name] = circuit = _flat_circuit(
-            flatnet["instances"],
-            flatnet.get("connections", {}),
-            flatnet.get("nets", []),
-            flatnet.get("ports", {}),
-            flatnet.get("placements", {}),
-            current_models,
-            _backend,
-            ignore_impossible_connections=ignore_impossible_connections,
-        )
-
-    if circuit is None:
-        msg = "Could not construct circuit (unknown reason)"
-        raise RuntimeError(msg)
-    circuit = _enforce_return_type(circuit, return_type)
-    return circuit, sax.CircuitInfo(
-        dag=dependency_dag,
-        models=current_models,
+    prepared = _replace_callable_instances(netlist)
+    merged_models: sax.Models = {**(models or {}), **instance_models}
+    return _circuit_native(
+        prepared,
+        merged_models,
         backend=_backend,
+        return_type=return_type,
+        top_level_name=top_level_name,
+        ignore_impossible_connections=ignore_impossible_connections,
+        probes=probes,
+        on_internal_port=on_internal_port,
     )
 
 
@@ -438,40 +347,6 @@ def _circuit_native(
     )
 
 
-def _create_dag(
-    netlist: sax.RecursiveNetlist,
-    models: sax.Models | None = None,
-    *,
-    validate: bool = False,
-) -> nx.DiGraph:
-    if models is None:
-        models = {}
-
-    all_models = {}
-    g = nx.DiGraph()
-
-    for model_name, subnetlist in netlist.items():
-        if model_name not in all_models:
-            all_models[model_name] = models.get(model_name, subnetlist)
-            g.add_node(model_name)
-        if model_name in models:
-            continue
-        for instance in subnetlist["instances"].values():
-            component = instance["component"]
-            if component not in all_models:
-                all_models[component] = models.get(component)
-                g.add_node(component)
-            g.add_edge(model_name, component)
-
-    # we only need the nodes that depend on the parent...
-    parent_node = next(iter(netlist.keys()))
-    nodes = [parent_node, *nx.descendants(g, parent_node)]
-    g = cast(nx.DiGraph, nx.induced_subgraph(g, nodes))
-    if validate:
-        g = _validate_dag(g)
-    return g
-
-
 def draw_dag(dag: nx.DiGraph, *, with_labels: bool = True, **kwargs: Any) -> None:  # noqa: ANN401
     """Draw a directed acyclic graph (DAG) representing circuit dependencies.
 
@@ -542,25 +417,11 @@ def get_required_circuit_models(
         ```
     """
     instance_models = _extract_instance_models(netlist)
-    if _NATIVE_AVAILABLE:
-        prepared = _replace_callable_instances(netlist)
-        cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
-        merged: sax.Models = {**(models or {}), **instance_models}
-        dependency_dag = _native_dag(cells, root, merged)
-        _, required, _ = _find_missing_models(merged, dependency_dag)
-        return required
-    warnings.warn(
-        "get_required_circuit_models without kfnetlist uses the deprecated legacy "
-        "netlist path; install kfnetlist (Python >= 3.12) for the native path.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    recnet = into_recnet(netlist)
-    recnet = remove_unused_instances(recnet)
-    dependency_dag = _create_dag(recnet, models, validate=True)
-    _, required, _ = _find_missing_models(
-        models, dependency_dag, extra_models=instance_models
-    )
+    prepared = _replace_callable_instances(netlist)
+    cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
+    merged: sax.Models = {**(models or {}), **instance_models}
+    dependency_dag = _native_dag(cells, root, merged)
+    _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
 
 
@@ -871,86 +732,5 @@ def _validate_dag(dag: nx.DiGraph) -> nx.DiGraph:
     return dag
 
 
-def _validate_netlist_ports(netlist: sax.RecursiveNetlist) -> None:
-    top_level_name = next(iter(netlist))
-    top_level = netlist[top_level_name]
-    ports_str = ", ".join(list(top_level.get("ports", {})))
-    if not ports_str:
-        ports_str = "no ports given"
-    if len(top_level.get("ports", {})) < 1:
-        msg = (
-            "Cannot create circuit: "
-            f"at least 1 port needs to be defined. Got {ports_str}."
-        )
-        raise ValueError(msg)
-
-
 def _strip_array_index(s: sax.InstanceName) -> sax.Name:
     return s.split("<")[0]
-
-
-def resolve_array_instance(name: sax.Name, inst: sax.Instance) -> sax.Instances:
-    if "array" not in inst:
-        return {name: inst}
-    ret = {}
-    for i in range(inst["array"]["columns"]):
-        for j in range(inst["array"]["rows"]):
-            ret[f"{name}<{i}.{j}>"] = {"component": inst["component"]}
-            if "settings" in inst:
-                ret[f"{name}<{i}.{j}>"]["settings"] = inst["settings"]
-    return ret
-
-
-@overload
-def resolve_array_instances(netlist: sax.RecursiveNetlist) -> sax.RecursiveNetlist: ...
-
-
-@overload
-def resolve_array_instances(netlist: sax.Netlist) -> sax.Netlist: ...
-
-
-def resolve_array_instances(netlist: sax.AnyNetlist) -> sax.AnyNetlist:
-    if _is_netlist(net := cast(sax.Netlist, netlist)):
-        net = {**net}  # shallow copy
-        instances = {}
-        for name, inst in net["instances"].items():
-            instances.update(resolve_array_instance(name, inst))
-        net["instances"] = instances
-        return net
-    if _is_recursive_netlist(recnet := cast(sax.RecursiveNetlist, netlist)):
-        return {k: resolve_array_instances(v) for k, v in recnet.items()}
-    return netlist
-
-
-def patch_netlist_array_instances(netlist: sax.RecursiveNetlist) -> None:  # noqa: C901
-    """Patch array instances into netlist."""
-
-    def patch_flatnet(flatnet: sax.Netlist) -> None:
-        array_insts = {}
-
-        def inner() -> None:
-            i1 = p.split(",")[0]
-            i2 = q.split(",")[0]
-            for i in [i1, i2]:
-                if "<" in i:
-                    i0 = i.split("<")[0]
-                    c, r = [int(x) for x in i.split("<")[1].split(">")[0].split(".")]
-                    if i0 not in array_insts:
-                        array_insts[i0] = {"columns": 0, "rows": 0}
-                    array_insts[i0]["columns"] = max(array_insts[i0]["columns"], c + 1)
-                    array_insts[i0]["rows"] = max(array_insts[i0]["rows"], r + 1)
-
-        for net in flatnet.get("nets", []):
-            p, q = net["p1"], net["p2"]
-            inner()
-        for p, q in flatnet.get("connections", {}).items():  # noqa: B007
-            inner()
-        for p in flatnet.get("ports", {}).values():
-            q = p
-            inner()
-
-        for k, v in array_insts.items():
-            flatnet["instances"][k]["array"] = v
-
-    for v in netlist.values():
-        patch_flatnet(v)
