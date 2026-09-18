@@ -23,6 +23,23 @@ The pytest run emitted a Hypothesis collection warning about the configured
 An ignored `.venv` was created. The notebook kernel was installed under a temporary
 prefix rather than replacing the user's global `sax` kernel.
 
+## Final TODO remediation verification
+
+After the per-item fixes, the full command
+`JUPYTER_PATH="$PREFIX/share/jupyter" .venv/bin/python -m pytest src/tests -q -rs`
+passed **388 tests, no skips, in 29.50 seconds**. This includes all four notebook
+tests and all 33 kfnetlist tests (kfnetlist 0.3.0, already installed in the development
+environment). An isolated temporary `sax` kernel was installed using the method below.
+The final `just smoke` run passed 4 tests in **4.07 seconds wall-clock** (3.03s pytest).
+`uv lock --check` also passed. The [completion audit](changes/todo-remediation.md)
+maps each TODO to commits and actual regression surfaces.
+
+Environment: Python 3.12.14 on macOS arm64; JAX 0.9.2, NumPy 2.5.3,
+Pydantic 2.13.5, scikit-rf 1.13.0, pytest 9.1.1. The 34 warnings were Hypothesis
+collection configuration and NumPy/xarray/SAX dtype deprecations, not skipped tests.
+No full lint/type/pre-commit or public-example notebook run is claimed. Commits after
+the user's instruction used `-n`.
+
 ## Fast checks during TODO remediation
 
 Run `just smoke` (or `.venv/bin/python -m pytest src/tests/test_smoke.py -q`) in the

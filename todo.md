@@ -114,11 +114,16 @@ Reader/writer directions are tested independently; related input fixes share a c
   Sources: `pyproject.toml`, `uv.lock`, `README.md`.
   Already reconciled in `9e1e73b`: `uv lock --check` passes, locked smoke: **4 passed**.
   No dependency churn needed; corrected README Python/group installation guidance.
-- [ ] **Close verification gaps.** Add focused tests for parser directionality,
+- [x] **Close verification gaps.** Add focused tests for parser directionality,
   fitting degeneracies, batch broadcasting, and backend restrictions as the above
   issues are addressed. Run the optional kfnetlist suite in an environment with
   its fixture dependency installed. Do not treat import tests as numerical tests.
+  Added backend restriction, interpolation/JIT/gradient, and native-coercion tests.
+  All **33 kfnetlist tests** ran. Corrected stale Pydantic notebook assumptions and
+  a test-order-sensitive file mock found by the full suite; rerun: **388 passed,
+  no skips**. Final `just smoke`: **4.07 seconds wall-clock**.
 
-For each completed item, update affected specs/tests and record verification.
-The baseline suite passed **266 tests**, with **1 skipped** for missing `kfnetlist`;
-that result does not establish correctness of the untested cases above.
+All items are complete. [Completion audit](specs/changes/todo-remediation.md) maps
+requirements to per-item commits and regression evidence. Historical baseline:
+266 passed / 1 skipped; final verification: **388 passed / no skips**.
+No pre-commit compliance claim is made; commits used `-n` after that instruction.

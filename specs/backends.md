@@ -101,6 +101,9 @@ paths. Specify tolerances and dtype; do not require bitwise equality across solv
 Passivity, reciprocity, and power conservation are model-dependent, not universal
 assertions. Solver failure on a singular network is not evidence of a valid result.
 
+`test_backend_restrictions.py` verifies repeated-endpoint rejection for FG/forward/
+additive, KLU multi-link coefficients, and additive length sums rather than products.
+
 Existing evidence: [`03_backends.ipynb`](../src/tests/nbs/03_backends.ipynb) compares
 KLU and FG within `1e-5`; [`test_probes.py`](../src/tests/test_probes.py) exercises
 circuit/probe behavior. Baseline smoke checks cover a simple KLU/FG circuit's JIT and

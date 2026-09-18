@@ -1,8 +1,11 @@
-# Open questions and observed discrepancies
+# Baseline findings and resolutions
 
-These are **not approved behavior changes**. Confirm intended behavior and add a
-focused regression test before fixing one. Source inspection alone is labeled
-separately from runtime reproduction. Do not infer an exhaustive bug audit.
+The baseline findings below were addressed by the TODO remediation pass. Resolution
+rows link the current behavior to regression evidence; explicitly historical text
+preserves the original observations. See the [completion audit](changes/todo-remediation.md).
+The legacy flattening separator limitation remains documented, not silently changed.
+Future findings should distinguish inspection, reproduction, and intended behavior;
+this record is not an exhaustive bug audit.
 
 ## Representation and model behavior
 
@@ -14,7 +17,7 @@ separately from runtime reproduction. Do not infer an exhaustive bug audit.
 | **Resolved:** `phase_shifter.loss` documented as dB/µm, retaining its historical formula | `test_phase_shifter.py` | Length scaling, zero-length limit, voltage phase, and gradient checked |
 | **Resolved:** constant feature/target columns use unit normalization scale | `test_fit_degenerate.py` | Finite fits, prediction index preservation, and symbolic export equivalence tested |
 
-Reproduction seeds for the first two observations:
+Original reproduction seeds, with corrected current results:
 
 ```python
 s = {("in0", "out0"): 1.0}

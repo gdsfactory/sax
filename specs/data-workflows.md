@@ -25,7 +25,8 @@ Evidence: [`parsers/kfnetlist.py`](../src/sax/parsers/kfnetlist.py),
 [`parsers/mosaic.py`](../src/sax/parsers/mosaic.py),
 [`utils.py`](../src/sax/utils.py). Test surface:
 [`test_kfnetlist_parser.py`](../src/tests/test_kfnetlist_parser.py), skipped in the
-baseline environment because its optional fixture dependency was absent.
+original baseline environment; all 33 tests ran successfully during final remediation
+with kfnetlist 0.3.0 installed.
 
 ## Tabular S-parameter interchange
 
@@ -80,7 +81,8 @@ static data and uses JAX for numerical queries; this is not a promise to trace
 arbitrary xarray operations or dynamic categorical strings.
 
 Evidence: [`interpolation.py`](../src/sax/interpolation.py).
-Examples: [`12_data_parsers.md`](../docs/nbs/examples/12_data_parsers.md),
+`test_interpolation_contract.py` verifies linear interpolation, boundary clamping,
+JIT, and an interior gradient. Examples: [`12_data_parsers.md`](../docs/nbs/examples/12_data_parsers.md),
 [`13_surface_models.md`](../docs/nbs/examples/13_surface_models.md). These examples
 are not part of the four notebook tests run for the baseline.
 

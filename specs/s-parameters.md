@@ -81,6 +81,9 @@ before constructing or tracing models, rather than relying on JIT cache invalida
 `sax.try_into[T](value)` returns `None` on caught conversion failures. These are not
 the same as the lightweight `sax.sdict/scoo/sdense` format dispatchers. Validation
 at one entry point does not imply every operation validates all invariants.
+Native Python target types delegate to the installed Pydantic adapter; supported
+coercions can vary across supported Pydantic releases. `test_native_type_coercion.py`
+checks that delegation, concrete return values (including zero), and error translation.
 
 Evidence: [`ports.py`](../src/sax/ports.py),
 [`saxtypes/into.py`](../src/sax/saxtypes/into.py), and singlemode/multimode/core type

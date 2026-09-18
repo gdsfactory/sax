@@ -42,7 +42,11 @@ def test_repeated_writes_overwrite_without_mutation(tmp_path: Path) -> None:
 
 def test_string_writes_are_repeatable_and_file_free() -> None:
     frame = _data()
-    with patch.object(Path, "open", side_effect=AssertionError("unexpected file I/O")):
+    # Patch only this writer's filesystem boundary: globally patching Path.open
+    # would also block unrelated lazy-import metadata reads inside xarray/dask.
+    with patch(
+        "sax.parsers.lumerical.Path", side_effect=AssertionError("unexpected file I/O")
+    ):
         first = sax.write_lumerical_dat(frame)
         second = sax.write_lumerical_dat(frame)
     assert first == second
