@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from functools import partial
 from typing import Any, Literal, cast, overload
 
@@ -25,8 +25,8 @@ __all__ = ["circuit", "draw_dag", "get_required_circuit_models"]
 
 @overload
 def circuit(
-    netlist: dict[str, Any] | native.Netlist | str,
-    models: sax.Models | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
     top_level_name: str | None = None,
@@ -38,8 +38,8 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any] | native.Netlist | str,
-    models: sax.Models | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDict"],
@@ -52,8 +52,8 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any] | native.Netlist | str,
-    models: sax.Models | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDense"],
@@ -66,8 +66,8 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: dict[str, Any] | native.Netlist | str,
-    models: sax.Models | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SCoo"],
@@ -79,8 +79,8 @@ def circuit(
 
 
 def circuit(
-    netlist: dict[str, Any] | native.Netlist | str,
-    models: sax.Models | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
     return_type: Literal["SDict", "SDense", "SCoo"] = "SDict",
@@ -173,14 +173,33 @@ def circuit(
     )
 
 
+def _reserved_netlist_keys(netlist: object) -> set[str]:
+    reserved: set[str] = set()
+    pending = [netlist]
+    while pending:
+        data = pending.pop()
+        if not isinstance(data, Mapping):
+            continue
+        reserved.update(str(key) for key in data)
+        for inst in data.get("instances", {}).values():
+            if isinstance(inst, str):
+                reserved.add(inst)
+            elif isinstance(inst, Mapping):
+                reserved.add(str(inst.get("component", "")))
+                reserved.add(str(inst.get("cell", "")))
+        if "instances" not in data:
+            pending.extend(data.values())
+    return reserved
+
+
 def _replace_callable_instances(netlist: Any, models: sax.Models) -> Any:  # noqa: ANN401
     """Bind direct callables per instance and preserve keyword-partial settings."""
-    reserved = set(models)
-    if isinstance(netlist, dict):
-        reserved.update(netlist)
+    if native.is_native(netlist) or native.is_native_hierarchy(netlist):
+        return netlist
+    reserved = set(models) | _reserved_netlist_keys(netlist)
 
     def replace(data: Any) -> Any:  # noqa: ANN401
-        if not isinstance(data, dict):
+        if not isinstance(data, Mapping):
             return data
         if "instances" not in data:
             return {key: replace(value) for key, value in data.items()}
@@ -205,7 +224,7 @@ def _replace_callable_instances(netlist: Any, models: sax.Models) -> Any:  # noq
                 index += 1
                 key = f"_sax_callable_{index}"
             reserved.add(key)
-            models[key] = model
+            models[key] = cast(sax.Model, model)
             instances[name] = {"component": key, "settings": settings}
         return {**data, "instances": instances}
 
@@ -250,17 +269,19 @@ def _native_dag(
     return _validate_dag(g)
 
 
-def _circuit_native(
+def _prepare_native_circuit(
     netlist: object,
-    models: sax.Models | None,
-    *,
-    backend: sax.Backend,
-    return_type: Literal["SDict", "SDense", "SCoo"],
+    models: sax.Models,
     top_level_name: str | None,
-    ignore_impossible_connections: bool,
     probes: dict[str, str] | None,
-    on_internal_port: Literal["warn", "ignore", "as_probes"],
-) -> tuple[sax.Model, sax.CircuitInfo]:
+) -> tuple[
+    native.NativeHierarchy,
+    str,
+    native.HierarchySettings,
+    dict[str, str],
+    dict[str, dict[str, str]],
+    dict[str, list[tuple[str, str]]],
+]:
     python_settings: native.HierarchySettings = {}
     cells, root = native.to_hierarchy(
         netlist,
@@ -268,7 +289,6 @@ def _circuit_native(
         settings_table=python_settings,
     )
 
-    models = dict(models or {})
     top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
         cells, root, models, probes or {}
     )
@@ -281,6 +301,81 @@ def _circuit_native(
         name: native.remove_unused_instances(nl, keep=keep.get(name, ()))
         for name, nl in cells.items()
     }
+    return cells, root, python_settings, top_probes, per_cell_probes, probe_paths
+
+
+def _prepare_cell_tables(
+    nl: native.Netlist,
+    model_name: str,
+    root: str,
+    models: sax.Models,
+    cells: native.NativeHierarchy,
+    python_settings: native.HierarchySettings,
+    extra_ports: dict[str, dict[str, str]],
+    top_probes: dict[str, str],
+    per_cell_probes: dict[str, dict[str, str]],
+    on_internal_port: str,
+) -> tuple[sax.Instances, sax.Nets, sax.Ports, bool]:
+    instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
+    for name, inst in instances.items():
+        saved = python_settings.get(model_name, {}).get(_strip_array_index(name))
+        if saved is not None:
+            inst["settings"] = saved
+        key = bindings.get(name)
+        if key is None:
+            msg = (
+                f"Could not resolve model for instance {name!r} "
+                f"(component {inst['component']!r}) in {model_name!r}."
+            )
+            raise ValueError(msg)
+        inst["component"] = key
+
+    for port_name, endpoint in extra_ports.get(model_name, {}).items():
+        if port_name in ports:
+            msg = (
+                f"Hierarchical probe port {port_name!r} conflicts with "
+                f"an existing port in {model_name!r}."
+            )
+            raise ValueError(msg)
+        ports[port_name] = endpoint
+
+    probe_here: dict[str, str] = {}
+    if model_name == root:
+        ports, auto_probes = native.handle_internal_ports(nets, ports, on_internal_port)
+        probe_here.update(top_probes)
+        probe_here.update(auto_probes)
+    probe_here.update(per_cell_probes.get(model_name, {}))
+
+    if probe_here:
+        instances, nets, ports = native.expand_probes_tables(
+            instances, nets, ports, probe_here
+        )
+
+    if model_name == root and not ports:
+        msg = (
+            "Cannot create circuit: at least 1 port needs to be defined. "
+            "Got no ports given."
+        )
+        raise ValueError(msg)
+
+    return instances, nets, ports, bool(probe_here)
+
+
+def _circuit_native(
+    netlist: object,
+    models: sax.Models | None,
+    *,
+    backend: sax.Backend,
+    return_type: Literal["SDict", "SDense", "SCoo"],
+    top_level_name: str | None,
+    ignore_impossible_connections: bool,
+    probes: dict[str, str] | None,
+    on_internal_port: Literal["warn", "ignore", "as_probes"],
+) -> tuple[sax.Model, sax.CircuitInfo]:
+    models = dict(models or {})
+    cells, root, python_settings, top_probes, per_cell_probes, probe_paths = (
+        _prepare_native_circuit(netlist, models, top_level_name, probes)
+    )
     dependency_dag = _native_dag(cells, root, models, require_models=True)
     models = _validate_models(models, dependency_dag)
 
@@ -306,46 +401,21 @@ def _circuit_native(
         current_models |= new_models
         new_models = {}
         nl = cells[model_name]
-        instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
-        for name, inst in instances.items():
-            saved = python_settings.get(model_name, {}).get(_strip_array_index(name))
-            if saved is not None:
-                inst["settings"] = saved
-            key = bindings.get(name)
-            if key is None:
-                msg = (
-                    f"Could not resolve model for instance {name!r} "
-                    f"(component {inst['component']!r}) in {model_name!r}."
-                )
-                raise ValueError(msg)
-            inst["component"] = key
-
-        for port_name, endpoint in extra_ports.get(model_name, {}).items():
-            if port_name in ports:
-                msg = f"Hierarchical probe port {port_name!r} conflicts with an existing port in {model_name!r}."
-                raise ValueError(msg)
-            ports[port_name] = endpoint
-
-        probe_here: dict[str, str] = {}
-        if model_name == root:
-            ports, auto_probes = native.handle_internal_ports(
-                instances, nets, ports, on_internal_port
-            )
-            probe_here.update(top_probes)
-            probe_here.update(auto_probes)
-        probe_here.update(per_cell_probes.get(model_name, {}))
-
-        if probe_here:
-            instances, nets, ports = native.expand_probes_tables(
-                instances, nets, ports, probe_here
-            )
-
-        if model_name == root and not ports:
-            msg = "Cannot create circuit: at least 1 port needs to be defined. Got no ports given."
-            raise ValueError(msg)
+        instances, nets, ports, has_probes = _prepare_cell_tables(
+            nl,
+            model_name,
+            root,
+            models,
+            cells,
+            python_settings,
+            extra_ports,
+            top_probes,
+            per_cell_probes,
+            on_internal_port,
+        )
 
         available: sax.Models = {**models, **current_models}
-        if probe_here:
+        if has_probes:
             available["_ideal_probe"] = ideal_probe
         current_models[model_name] = circuit = _flat_circuit(
             instances,
@@ -401,8 +471,8 @@ def draw_dag(dag: nx.DiGraph, *, with_labels: bool = True, **kwargs: Any) -> Non
 
 
 def get_required_circuit_models(
-    netlist: sax.AnyNetlist,
-    models: dict[str, sax.Model] | None = None,
+    netlist: Mapping[str, Any] | native.Netlist | str,
+    models: Mapping[str, sax.Model] | None = None,
     *,
     top_level_name: str | None = None,
 ) -> list[str]:
@@ -414,8 +484,9 @@ def get_required_circuit_models(
 
     Args:
         netlist: Circuit netlist to analyze for component dependencies.
-        models: Optional dictionary of available models. Used to filter out
-            models that are already provided.
+        models: Optional model bindings used to determine analytical boundaries.
+            The result includes required primitive models even when supplied.
+        top_level_name: Explicit root; otherwise use document/default root selection.
 
     Returns:
         List of component names that require model functions.
@@ -435,7 +506,7 @@ def get_required_circuit_models(
         # With some models already available
         models = {"waveguide": my_waveguide_model}
         required = get_required_circuit_models(netlist, models)
-        # Result: ["directional_coupler"]
+        # Result: ["directional_coupler", "waveguide"] (order unspecified)
         ```
     """
     merged: sax.Models = dict(models or {})
@@ -456,7 +527,7 @@ def _flat_circuit(
     connections: sax.Connections,
     nets: sax.Nets,
     ports: sax.Ports,
-    placements: sax.Placements,
+    placements: Mapping[str, Mapping[str, Any]],
     models: sax.Models,
     backend: sax.Backend,
     *,

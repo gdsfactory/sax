@@ -1,3 +1,5 @@
+See the [native netlist guide](native-netlists.md) for extraction and migration examples.
+
 ::: sax
 
 ## Backend compatibility

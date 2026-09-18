@@ -15,10 +15,11 @@ Two hierarchy identities are kept distinct:
 Model resolution precedence (see ``specs/changes/kfnetlist-canonical.md``):
 
 1. explicit cell-specific model (``models[cell]``),
-2. exact factory model (``models[component]``),
-3. recurse via the instantiated cell reference (``cells[cell]``),
-4. recurse via a cell whose name equals the factory name,
-5. otherwise the instance is missing a model.
+2. library-qualified factory model (``models["library::component"]``),
+3. exact bare factory model (``models[component]``), if unambiguous,
+4. recurse via the instantiated cell reference (``cells[cell]``),
+5. recurse via a cell whose name equals the factory name,
+6. otherwise the instance is missing a model.
 """
 
 from __future__ import annotations
@@ -26,10 +27,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from itertools import pairwise
+from typing import Any, TypeGuard, TypeVar
 
 from kfnetlist import (
     Netlist,
+    NetlistInstance,
     NetlistPort,
     PlacedNetlist,
     Placement,
@@ -37,10 +40,7 @@ from kfnetlist import (
     PortRef,
 )
 
-from .saxtypes.netlist import val_placement
-
-if TYPE_CHECKING:
-    pass
+from .saxtypes.netlist import Instance, Instances, Nets, val_placement
 
 __all__ = [
     "NativeHierarchy",
@@ -56,6 +56,8 @@ __all__ = [
     "to_hierarchy",
 ]
 
+NetlistT = TypeVar("NetlistT", bound=Netlist)
+
 NativeHierarchy = dict[str, Netlist]
 """Mapping of cell name to native kfnetlist netlist (SAX's canonical hierarchy)."""
 
@@ -63,16 +65,16 @@ InstanceSettings = dict[str, dict[str, Any]]
 HierarchySettings = dict[str, InstanceSettings]
 
 
-def is_native(obj: object) -> bool:
+def is_native(obj: object) -> TypeGuard[Netlist]:
     """Return whether *obj* is a native kfnetlist netlist object."""
     return isinstance(obj, Netlist)
 
 
-def is_native_hierarchy(obj: object) -> bool:
+def is_native_hierarchy(obj: object) -> TypeGuard[Mapping[str, Netlist]]:
     """Return whether *obj* is a native ``{cell name: Netlist}`` mapping."""
     if not isinstance(obj, Mapping) or not obj:
         return False
-    return all(isinstance(v, Netlist) for v in obj.values())
+    return all(isinstance(k, str) and isinstance(v, Netlist) for k, v in obj.items())
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ def _scan_legacy_arrays(flat: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
 def _add_legacy_instance(
     nl: Netlist,
     name: str,
-    inst: Any,
+    inst: object,
     sizes: Mapping[str, tuple[int, int]],
     placement: Mapping[str, Any],
     settings_table: InstanceSettings | None,
@@ -152,27 +154,38 @@ def _add_legacy_instance(
     if settings_table is not None:
         settings_table[name] = settings
         settings, info = {}, {}
-    kwargs = dict(
-        kcl="",
-        component=component,
-        settings=settings,
-        na=na,
-        nb=nb,
-        info=info,
-    )
     if isinstance(nl, PlacedNetlist):
         normalized = val_placement(placement)
-        kwargs["cell"] = (
+        cell = (
             str(inst.get("cell", component)) if isinstance(inst, Mapping) else component
         )
-        kwargs["placement"] = Placement(
-            x=normalized["x"],
-            y=normalized["y"],
-            orientation=float(normalized["rotation"]),
-            mirror=normalized["mirror"],
-            bbox={"left": 0.0, "bottom": 0.0, "right": 0.0, "top": 0.0},
+        nl.create_inst(
+            name,
+            kcl="",
+            component=component,
+            settings=settings,
+            na=na,
+            nb=nb,
+            info=info,
+            cell=cell,
+            placement=Placement(
+                x=normalized["x"],
+                y=normalized["y"],
+                orientation=float(normalized["rotation"]),
+                mirror=normalized["mirror"],
+                bbox={"left": 0.0, "bottom": 0.0, "right": 0.0, "top": 0.0},
+            ),
         )
-    nl.create_inst(name, **kwargs)
+    else:
+        nl.create_inst(
+            name,
+            kcl="",
+            component=component,
+            settings=settings,
+            na=na,
+            nb=nb,
+            info=info,
+        )
 
 
 def _native_member(endpoint: str) -> NetlistPort | PortRef | PortArrayRef:
@@ -275,49 +288,81 @@ def to_hierarchy(
         )
 
     if isinstance(netlist, Mapping):
-        data = dict(netlist)
-        if "modules" in data:
-            modules = data["modules"]
-            if not isinstance(modules, Mapping) or not modules:
-                msg = "PIC modules must be a nonempty mapping of cell definitions."
-                raise ValueError(msg)
-            for name, module in modules.items():
-                _validate_pic_module(module, str(name))
-            root = _select_root(modules, top_level_name, preferred=data.get("toplevel"))
-            return to_hierarchy(
-                modules, top_level_name=root, settings_table=settings_table
-            )
-        if "instances" in data:
-            if _looks_native(data):
-                return {flat_name: deserialize_netlist(data)}, flat_name
-            instance_settings = {} if settings_table is not None else None
-            if settings_table is not None:
-                settings_table[flat_name] = instance_settings
-            return (
-                {flat_name: from_legacy_flat(data, settings_table=instance_settings)},
-                flat_name,
-            )
-
-        cells: NativeHierarchy = {}
-        for name, flat in data.items():
-            key = str(name)
-            if isinstance(flat, Netlist):
-                cells[key] = flat
-            elif isinstance(flat, Mapping) and _looks_native(flat):
-                cells[key] = deserialize_netlist(flat)
-            elif isinstance(flat, Mapping):
-                instance_settings = {} if settings_table is not None else None
-                if settings_table is not None:
-                    settings_table[key] = instance_settings
-                cells[key] = from_legacy_flat(flat, settings_table=instance_settings)
-            else:
-                msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
-                raise TypeError(msg)
-        root = _select_root(cells, top_level_name)
-        return cells, root
-
+        return _mapping_hierarchy(netlist, top_level_name, settings_table)
     msg = f"Cannot interpret {type(netlist)} as a netlist."
     raise TypeError(msg)
+
+
+def _adapt_cell(
+    data: Mapping[str, Any],
+    key: str,
+    settings_table: HierarchySettings | None,
+) -> Netlist:
+    if _looks_native(data):
+        return deserialize_netlist(data)
+    saved: InstanceSettings | None = None
+    if settings_table is not None:
+        saved = {}
+        settings_table[key] = saved
+    return from_legacy_flat(data, settings_table=saved)
+
+
+def _is_pic_document(data: Mapping[str, Any]) -> bool:
+    if "modules" not in data:
+        return False
+    modules = data["modules"]
+    if "toplevel" in data or not isinstance(modules, Mapping):
+        return True
+    # A hierarchy may itself contain a concrete cell named "modules".
+    if _looks_native(modules):
+        return False
+    instances = modules.get("instances")
+    is_instance_table = isinstance(instances, Mapping) and all(
+        isinstance(inst, str)
+        or callable(inst)
+        or (isinstance(inst, Mapping) and "component" in inst)
+        for inst in instances.values()
+    )
+    return not is_instance_table
+
+
+def _mapping_hierarchy(
+    data: Mapping[str, Any],
+    top_level_name: str | None,
+    settings_table: HierarchySettings | None,
+) -> tuple[NativeHierarchy, str]:
+    if data and all(
+        isinstance(flat, Mapping) and _looks_native(flat) for flat in data.values()
+    ):
+        decoded = {str(name): deserialize_netlist(flat) for name, flat in data.items()}
+        return decoded, _select_root(decoded, top_level_name)
+    if _is_pic_document(data):
+        modules = data["modules"]
+        if not isinstance(modules, Mapping) or not modules:
+            msg = "PIC modules must be a nonempty mapping of cell definitions."
+            raise ValueError(msg)
+        for name, module in modules.items():
+            _validate_pic_module(module, str(name))
+        root = _select_root(modules, top_level_name, preferred=data.get("toplevel"))
+        cells = {
+            str(name): _adapt_cell(module, str(name), settings_table)
+            for name, module in modules.items()
+        }
+        return cells, root
+    if "instances" in data:
+        root = top_level_name if top_level_name is not None else "top_level"
+        return {root: _adapt_cell(data, root, settings_table)}, root
+    cells: NativeHierarchy = {}
+    for name, flat in data.items():
+        key = str(name)
+        if isinstance(flat, Netlist):
+            cells[key] = flat
+        elif isinstance(flat, Mapping):
+            cells[key] = _adapt_cell(flat, key, settings_table)
+        else:
+            msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
+            raise TypeError(msg)
+    return cells, _select_root(cells, top_level_name)
 
 
 # ---------------------------------------------------------------------------
@@ -331,16 +376,72 @@ def _expanded_name(name: str, i: int, j: int, na: int, nb: int) -> str:
     return f"{name}<{i}.{j}>"
 
 
+def _member_endpoint(
+    member: NetlistPort | PortRef | PortArrayRef,
+    array_sizes: Mapping[str, tuple[int, int]],
+) -> str | None:
+    if isinstance(member, NetlistPort):
+        return None
+    if member.instance not in array_sizes:
+        msg = f"Net references unknown instance {member.instance!r}."
+        raise ValueError(msg)
+    if isinstance(member, PortArrayRef):
+        na, nb = array_sizes[member.instance]
+        if not (1 <= member.ia <= na and 1 <= member.ib <= nb):
+            msg = f"Array reference {member!r} is outside its declared dimensions."
+            raise ValueError(msg)
+        key = _expanded_name(
+            member.instance,
+            member.ia - 1,
+            member.ib - 1,
+            *array_sizes.get(member.instance, (1, 1)),
+        )
+        return f"{key},{member.port}"
+    key = _expanded_name(
+        member.instance, 0, 0, *array_sizes.get(member.instance, (1, 1))
+    )
+    return f"{key},{member.port}"
+
+
+def _record_external_ports(
+    externals: list[NetlistPort],
+    endpoints: list[str],
+    declared: set[str],
+    ports: dict[str, str],
+) -> None:
+    for external in externals:
+        if external.name not in declared:
+            msg = f"Net references undeclared external port {external.name!r}."
+            raise ValueError(msg)
+        endpoint = endpoints[0]
+        if external.name in ports and ports[external.name] != endpoint:
+            msg = f"External port {external.name!r} targets multiple instance ports."
+            raise ValueError(msg)
+        ports[external.name] = endpoint
+
+
+def _validate_external_ports(declared: set[str], ports: dict[str, str]) -> None:
+    missing = declared - ports.keys()
+    if missing:
+        msg = (
+            f"Declared external ports have no instance connection: {sorted(missing)!r}."
+        )
+        raise ValueError(msg)
+    if len(set(ports.values())) != len(ports):
+        msg = "External port aliases targeting the same instance port are unsupported."
+        raise ValueError(msg)
+
+
 def lower(
     nl: Netlist,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str]]:
+) -> tuple[Instances, Nets, dict[str, str]]:
     """Lower a native netlist to ``(instances, nets, ports)`` tables.
 
     These flat tables are the compiled input to the numerical backends, not a
     canonical netlist representation. Array instances are expanded to
     ``name<column.row>`` entries (zero-based), matching SAX instance naming.
     """
-    instances: dict[str, dict[str, Any]] = {}
+    instances: Instances = {}
     array_sizes: dict[str, tuple[int, int]] = {}
     for name, inst in nl.instances.items():
         arr = inst.array
@@ -349,43 +450,19 @@ def lower(
         array_sizes[name] = (na, nb)
         for i in range(na):
             for j in range(nb):
-                entry: dict[str, Any] = {"component": inst.component}
+                entry: Instance = {"component": inst.component}
                 if inst.settings:
                     entry["settings"] = dict(inst.settings)
                 instances[_expanded_name(name, i, j, na, nb)] = entry
 
-    def member_endpoint(member: Any) -> str | None:
-        if isinstance(member, NetlistPort):
-            return None
-        if member.instance not in array_sizes:
-            msg = f"Net references unknown instance {member.instance!r}."
-            raise ValueError(msg)
-        if isinstance(member, PortArrayRef):
-            na, nb = array_sizes[member.instance]
-            if not (1 <= member.ia <= na and 1 <= member.ib <= nb):
-                msg = f"Array reference {member!r} is outside its declared dimensions."
-                raise ValueError(msg)
-            key = _expanded_name(
-                member.instance,
-                member.ia - 1,
-                member.ib - 1,
-                *array_sizes.get(member.instance, (1, 1)),
-            )
-            return f"{key},{member.port}"
-        assert isinstance(member, PortRef)
-        key = _expanded_name(
-            member.instance, 0, 0, *array_sizes.get(member.instance, (1, 1))
-        )
-        return f"{key},{member.port}"
-
     declared = {p.name for p in nl.ports}
     ports: dict[str, str] = {}
-    nets: list[dict[str, str]] = []
+    nets: Nets = []
     for net in nl.nets:
         members = list(net)
         externals = [m for m in members if isinstance(m, NetlistPort)]
         internal = [m for m in members if not isinstance(m, NetlistPort)]
-        endpoints = [member_endpoint(m) for m in internal]
+        endpoints = [_member_endpoint(m, array_sizes) for m in internal]
         endpoints = [e for e in endpoints if e is not None]
         if externals and not endpoints:
             msg = (
@@ -398,33 +475,15 @@ def lower(
                 "junction model or explicitly specified pairwise connections."
             )
             raise ValueError(msg)
-        for external in externals:
-            if external.name not in declared:
-                msg = f"Net references undeclared external port {external.name!r}."
-                raise ValueError(msg)
-            endpoint = endpoints[0]
-            if external.name in ports and ports[external.name] != endpoint:
-                msg = (
-                    f"External port {external.name!r} targets multiple instance ports."
-                )
-                raise ValueError(msg)
-            ports[external.name] = endpoint
-        for a, b in zip(endpoints, endpoints[1:]):
+        _record_external_ports(externals, endpoints, declared, ports)
+        for a, b in pairwise(endpoints):
             nets.append({"p1": a, "p2": b})
-    missing = declared - ports.keys()
-    if missing:
-        msg = (
-            f"Declared external ports have no instance connection: {sorted(missing)!r}."
-        )
-        raise ValueError(msg)
-    if len(set(ports.values())) != len(ports):
-        msg = "External port aliases targeting the same instance port are unsupported."
-        raise ValueError(msg)
+    _validate_external_ports(declared, ports)
     return instances, nets, ports
 
 
 def resolve(
-    inst: Any,
+    inst: NetlistInstance,
     models: Mapping[str, Any] | None,
     cells: Mapping[str, Any] | None,
 ) -> str | None:
@@ -464,7 +523,7 @@ def resolve(
     return None
 
 
-def missing_model_message(inst: Any, path: str) -> str:  # noqa: ANN401
+def missing_model_message(inst: NetlistInstance, path: str) -> str:
     """Describe the identities and lookups of an unresolved instance."""
     cell = getattr(inst, "cell", None)
     qualified = f"{inst.kcl}::{inst.component}"
@@ -481,7 +540,7 @@ def missing_model_message(inst: Any, path: str) -> str:  # noqa: ANN401
     )
 
 
-def copy_netlist(nl: Netlist) -> Netlist:
+def copy_netlist(nl: NetlistT) -> NetlistT:
     """Return an independent native copy of *nl*."""
     return type(nl).from_dict(nl.to_dict())
 
@@ -491,8 +550,8 @@ def lower_bindings(
     models: Mapping[str, Any],
     cells: Mapping[str, Any],
 ) -> tuple[
-    dict[str, dict[str, Any]],
-    list[dict[str, str]],
+    Instances,
+    Nets,
     dict[str, str],
     dict[str, str | None],
 ]:
@@ -532,12 +591,11 @@ def placements(nl: Netlist) -> dict[str, dict[str, Any]]:
 
 
 def _endpoint_instance(endpoint: str) -> str:
-    return endpoint.split(",")[0]
+    return endpoint.split(",", 1)[0]
 
 
 def handle_internal_ports(
-    instances: Mapping[str, Any],
-    nets: list[dict[str, str]],
+    nets: Nets,
     ports: dict[str, str],
     on_internal_port: str,
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -573,12 +631,30 @@ def handle_internal_ports(
     return kept, probes
 
 
+def _intercept_probe_target(
+    nets: Nets,
+    ports: dict[str, str],
+    target: str,
+    probe_instance: str,
+) -> str | None:
+    for i, net in enumerate(nets):
+        if target in (net["p1"], net["p2"]):
+            nets.pop(i)
+            return net["p2"] if net["p1"] == target else net["p1"]
+    for pname, endpoint in ports.items():
+        if endpoint == target:
+            in_side = f"{probe_instance},in"
+            ports[pname] = in_side
+            return in_side
+    return None
+
+
 def expand_probes_tables(
-    instances: dict[str, dict[str, Any]],
-    nets: list[dict[str, str]],
+    instances: Instances,
+    nets: Nets,
     ports: dict[str, str],
     probes: Mapping[str, str],
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str]]:
+) -> tuple[Instances, Nets, dict[str, str]]:
     """Insert ideal probes into lowered topology tables.
 
     ``_fwd`` measures the wave travelling into the targeted instance port.
@@ -605,23 +681,7 @@ def expand_probes_tables(
             )
             raise ValueError(msg)
 
-        in_side: str | None = None
-        for i, net in enumerate(nets):
-            if net["p1"] == target:
-                in_side = net["p2"]
-                nets.pop(i)
-                break
-            if net["p2"] == target:
-                in_side = net["p1"]
-                nets.pop(i)
-                break
-        if in_side is None:
-            # Boundary or unconnected: route the existing external port through.
-            for pname, endpoint in ports.items():
-                if endpoint == target:
-                    in_side = f"{probe_instance},in"
-                    ports[pname] = in_side
-                    break
+        in_side = _intercept_probe_target(nets, ports, target, probe_instance)
 
         instances[probe_instance] = {"component": "_ideal_probe"}
         if in_side is not None and in_side != f"{probe_instance},in":
@@ -644,6 +704,24 @@ def _validate_probe_name(nl: Netlist, name: str, *, insert_instance: bool) -> No
         raise ValueError(msg)
 
 
+def _probe_instance_name(nl: Netlist, name: str) -> str:
+    base, _, col, row = _split_legacy_endpoint(f"{name},_")
+    inst = nl.instances.get(base)
+    if inst is None:
+        return name  # Preserve the existing missing-instance diagnostic.
+    na, nb = (inst.array.na, inst.array.nb) if inst.array is not None else (1, 1)
+    col, row = col or 0, row or 0
+    if not (0 <= col < na and 0 <= row < nb):
+        msg = f"Probe instance {name!r} is outside its declared array dimensions."
+        raise ValueError(msg)
+    return _expanded_name(base, col, row, na, nb)
+
+
+def _probe_endpoint(nl: Netlist, endpoint: str) -> str:
+    instance, separator, port = endpoint.partition(",")
+    return f"{_probe_instance_name(nl, instance)}{separator}{port}"
+
+
 def plan_hierarchical_probes(
     cells: Mapping[str, Netlist],
     root: str,
@@ -658,7 +736,7 @@ def plan_hierarchical_probes(
         parts = re.split(r"\.(?![^<]*>)", target)
         if len(parts) == 1:
             _validate_probe_name(cells[root], probe_name, insert_instance=True)
-            top[probe_name] = target
+            top[probe_name] = _probe_endpoint(cells[root], target)
             continue
         current = root
         path: list[tuple[str, str]] = []
@@ -680,10 +758,12 @@ def plan_hierarchical_probes(
                     "Only sub-circuits (not primitives) can be probed."
                 )
                 raise ValueError(msg)
-            path.append((instance_name, current))
+            path.append((_probe_instance_name(cells[current], instance_name), current))
             current = key
         _validate_probe_name(cells[current], probe_name, insert_instance=True)
-        per_cell.setdefault(current, {})[probe_name] = parts[-1]
+        per_cell.setdefault(current, {})[probe_name] = _probe_endpoint(
+            cells[current], parts[-1]
+        )
         paths[probe_name] = path
     return top, per_cell, paths
 
@@ -700,7 +780,10 @@ def _select_root(
     selected = requested if requested is not None else preferred
     if selected is not None:
         if selected not in cells:
-            msg = f"Unknown top-level cell {selected!r}; available cells: {list(cells)!r}."
+            msg = (
+                f"Unknown top-level cell {selected!r}; "
+                f"available cells: {list(cells)!r}."
+            )
             raise ValueError(msg)
         return selected
     return "top_level" if "top_level" in cells else next(iter(cells))
@@ -708,7 +791,10 @@ def _select_root(
 
 def _reject_pic_expressions(value: object, path: str) -> None:
     if isinstance(value, str) and "${" in value:
-        msg = f"Unsupported PIC expression at {path}: {value!r}. Supply numerical settings."
+        msg = (
+            f"Unsupported PIC expression at {path}: {value!r}. "
+            "Supply numerical settings."
+        )
         raise ValueError(msg)
     if isinstance(value, Mapping):
         for key, child in value.items():
@@ -754,6 +840,19 @@ def load_pic_yaml(
     return to_hierarchy(data, top_level_name=top_level_name)
 
 
+def _read_pic_string(content: str) -> str:
+    from pathlib import Path
+
+    if "\n" not in content:
+        try:
+            path = Path(content)
+            if path.is_file():
+                return path.read_text()
+        except OSError:
+            pass  # Long single-line YAML/JSON is content, not a filename.
+    return content
+
+
 def load_native_netlist(content_or_path: object) -> Netlist:
     """Load a single native netlist; use ``load_pic_yaml`` for a hierarchy."""
     from pathlib import Path
@@ -762,25 +861,24 @@ def load_native_netlist(content_or_path: object) -> Netlist:
         return content_or_path
     if isinstance(content_or_path, Mapping):
         content = content_or_path
-    elif hasattr(content_or_path, "read"):
-        content = content_or_path.read()
+    elif callable(reader := getattr(content_or_path, "read", None)):
+        content = reader()
     elif isinstance(content_or_path, Path):
         content = content_or_path.read_text()
     elif isinstance(content_or_path, str):
-        content = content_or_path
-        if "\n" not in content:
-            try:
-                path = Path(content)
-                if path.is_file():
-                    content = path.read_text()
-            except OSError:
-                pass  # Long single-line YAML/JSON is content, not a filename.
+        content = _read_pic_string(content_or_path)
     else:
         msg = f"Cannot load native netlist from {type(content_or_path)}."
         raise TypeError(msg)
+    if not isinstance(content, (str, Mapping)):
+        msg = "Native netlist input must contain text or a mapping."
+        raise TypeError(msg)
     cells, root = load_pic_yaml(content)
     if len(cells) != 1:
-        msg = "Document contains a hierarchy; use native.load_pic_yaml to retain all cells."
+        msg = (
+            "Document contains a hierarchy; "
+            "use native.load_pic_yaml to retain all cells."
+        )
         raise ValueError(msg)
     return cells[root]
 
@@ -907,7 +1005,7 @@ def remove_unused_instances(
     for net in nl.nets:
         members = list(net)
         names = [m.instance for m in members if isinstance(m, (PortRef, PortArrayRef))]
-        graph.add_edges_from(zip(names, names[1:], strict=False))
+        graph.add_edges_from(pairwise(names))
         if any(isinstance(m, NetlistPort) and m.name in declared for m in members):
             roots.update(names)
     reachable: set[str] = set()

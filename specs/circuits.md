@@ -99,7 +99,7 @@ local identifier aliases so the existing lowered-table validators do not restric
 qualified identities. This is backend-table validation, not canonical topology.
 Public `load_netlist`/`load_recursive_netlist` keep their dictionary returns;
 `native.load_*` are explicit native-object loaders. Root/document compatibility
-and user examples are covered by remediation stage 4.
+and user examples are documented below and in `docs/native-netlists.md`.
 
 ## Evaluation and settings precedence
 
@@ -224,3 +224,17 @@ multifile and multimodule loading, numerical parity, settings overrides, metadat
 rejection, routes, and array indices. `test_native_extraction.py` extracts real
 gdsfactory variants and checks asymmetric factory replacement and distinct child
 fallback without changing caller-owned netlists.
+
+The callable adapter reserves existing factory and cell keys before allocating
+private bindings, including unresolved factory names. Probe paths normalize array
+names consistently with lowering: singleton `<0.0>` collapses to the base name,
+and out-of-range selections fail explicitly. Tests:
+`test_callable_binding_cannot_capture_an_unbound_factory` and
+`test_hierarchical_probe_array_names_match_lowering`.
+
+
+PIC wrapper detection does not consume a concrete legacy/native cell named
+`modules`. Native hierarchy dictionaries are recognized before flat/PIC parsing,
+so cells named `instances`, `ports`, or `modules` survive object/dict/JSON input.
+PIC modules are adapted as cells directly, without reinterpreting module names
+as flat-input fields. Regressions live in `test_native_pic.py`.

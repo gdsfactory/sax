@@ -11,8 +11,6 @@ from typing import cast, overload
 
 import numpy as np
 import pandas as pd
-import skrf
-import skrf as rf
 import xarray as xr
 
 import sax
@@ -42,6 +40,8 @@ def parse_touchstone(
     Note:
         This function uses skrf.Network to parse the touchstone file.
     """
+    import skrf as rf
+
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
         with StringIO(content_or_filename) as stream:
             stream.name = _touchstone_name(content_or_filename)
@@ -144,6 +144,8 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
         This function uses skrf.Network.write_touchstone to save the S-parameters.
 
     """
+    import skrf
+
     df = df.copy()
     in_amp_phi_format, in_wl_format = _validate_columns(df)
     modes = {*df["mode_in"], *df["mode_out"]}

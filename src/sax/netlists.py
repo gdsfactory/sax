@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Literal, cast, overload
 
@@ -10,6 +11,8 @@ import networkx as nx
 from natsort import natsorted
 
 import sax
+
+from . import native
 
 __all__ = [  # noqa: RUF022
     "netlist",
@@ -70,7 +73,21 @@ def netlist(
     return {top_level_name: top_level, **recnet}
 
 
-def flatten_netlist(recnet: sax.RecursiveNetlist, sep: str = "~") -> sax.Netlist:
+@overload
+def flatten_netlist(
+    recnet: native.Netlist | Mapping[str, native.Netlist],
+    sep: str = "~",
+) -> native.Netlist: ...
+
+
+@overload
+def flatten_netlist(recnet: sax.RecursiveNetlist, sep: str = "~") -> sax.Netlist: ...
+
+
+def flatten_netlist(
+    recnet: sax.RecursiveNetlist | native.Netlist | Mapping[str, native.Netlist],
+    sep: str = "~",
+) -> sax.Netlist | native.Netlist:
     """Flatten a recursive netlist into a single flat netlist.
 
     Converts a hierarchical (recursive) netlist into a single flat netlist by
@@ -100,35 +117,25 @@ def flatten_netlist(recnet: sax.RecursiveNetlist, sep: str = "~") -> sax.Netlist
         # Result has instances like "sub1~wg1" for the flattened hierarchy
         ```
     """
-    if _is_native_input(recnet):
-        from . import native
-
-        cells, root = _native_cells_and_root(recnet)
-        return native.flatten_netlist(cells, root, separator=sep)
+    if native.is_native(recnet):
+        return native.flatten_netlist({"top_level": recnet}, "top_level", separator=sep)
+    if native.is_native_hierarchy(recnet):
+        return native.flatten_netlist(recnet, next(iter(recnet)), separator=sep)
+    recnet = cast(sax.RecursiveNetlist, recnet)
     first_name = next(iter(recnet.keys()))
     net = deepcopy(recnet[first_name])
     _flatten_netlist_into(recnet, net, sep)
     return net
 
 
-def _is_native_input(obj: object) -> bool:
-    try:
-        from . import native
-
-        return native is not None and (
-            native.is_native(obj) or native.is_native_hierarchy(obj)
-        )
-    except ImportError:  # pragma: no cover - kfnetlist unavailable
-        return False
+@overload
+def remove_unused_instances(netlist: native.Netlist) -> native.Netlist: ...
 
 
-def _native_cells_and_root(obj: object) -> tuple[dict, str]:
-    from . import native
-
-    if native.is_native(obj):
-        return {"top_level": obj}, "top_level"
-    cells = dict(obj)  # type: ignore[arg-type]
-    return cells, next(iter(cells))
+@overload
+def remove_unused_instances(
+    netlist: Mapping[str, native.Netlist],
+) -> native.NativeHierarchy: ...
 
 
 @overload
@@ -139,16 +146,16 @@ def remove_unused_instances(netlist: sax.Netlist) -> sax.Netlist: ...
 def remove_unused_instances(netlist: sax.RecursiveNetlist) -> sax.RecursiveNetlist: ...
 
 
-def remove_unused_instances(netlist: sax.AnyNetlist) -> sax.AnyNetlist:
-    if _is_native_input(netlist):
-        from . import native
-
-        if native.is_native(netlist):
-            return native.remove_unused_instances(netlist)  # type: ignore[arg-type]
+def remove_unused_instances(
+    netlist: sax.AnyNetlist | native.Netlist | Mapping[str, native.Netlist],
+) -> sax.AnyNetlist | native.Netlist | native.NativeHierarchy:
+    if native.is_native(netlist):
+        return native.remove_unused_instances(netlist)
+    if native.is_native_hierarchy(netlist):
         return {
-            name: native.remove_unused_instances(nl)
-            for name, nl in netlist.items()  # type: ignore[union-attr]
+            name: native.remove_unused_instances(nl) for name, nl in netlist.items()
         }
+    netlist = cast(sax.AnyNetlist, netlist)
     if "instances" in netlist:
         net = cast(sax.Netlist, deepcopy(netlist))
         names = _get_nodes_to_remove(_get_connectivity_graph(net), net)
@@ -166,6 +173,19 @@ def remove_unused_instances(netlist: sax.AnyNetlist) -> sax.AnyNetlist:
 
 @overload
 def rename_instances(
+    netlist: native.Netlist, mapping: dict[str, str]
+) -> native.Netlist: ...
+
+
+@overload
+def rename_instances(
+    netlist: Mapping[str, native.Netlist],
+    mapping: dict[str, str],
+) -> native.NativeHierarchy: ...
+
+
+@overload
+def rename_instances(
     netlist: sax.Netlist,
     mapping: dict[sax.InstanceName, sax.InstanceName],
 ) -> sax.Netlist: ...
@@ -179,18 +199,16 @@ def rename_instances(
 
 
 def rename_instances(
-    netlist: sax.AnyNetlist,
+    netlist: sax.AnyNetlist | native.Netlist | Mapping[str, native.Netlist],
     mapping: dict[sax.InstanceName, sax.InstanceName],
-) -> sax.AnyNetlist:
-    if _is_native_input(netlist):
-        from . import native
-
-        if native.is_native(netlist):
-            return native.rename_instances(netlist, mapping)  # type: ignore[arg-type]
+) -> sax.AnyNetlist | native.Netlist | native.NativeHierarchy:
+    if native.is_native(netlist):
+        return native.rename_instances(netlist, mapping)
+    if native.is_native_hierarchy(netlist):
         return {
-            name: native.rename_instances(nl, mapping)
-            for name, nl in netlist.items()  # type: ignore[union-attr]
+            name: native.rename_instances(nl, mapping) for name, nl in netlist.items()
         }
+    netlist = cast(sax.AnyNetlist, netlist)
     if (recnet := sax.try_into[sax.RecursiveNetlist](netlist)) is not None:
         return {k: rename_instances(v, mapping) for k, v in recnet.items()}
 
@@ -237,6 +255,19 @@ def rename_instances(
 
 @overload
 def rename_models(
+    netlist: native.Netlist, mapping: dict[str, str]
+) -> native.Netlist: ...
+
+
+@overload
+def rename_models(
+    netlist: Mapping[str, native.Netlist],
+    mapping: dict[str, str],
+) -> native.NativeHierarchy: ...
+
+
+@overload
+def rename_models(
     netlist: sax.Netlist,
     mapping: dict[sax.Name, sax.Name],
 ) -> sax.Netlist: ...
@@ -250,18 +281,14 @@ def rename_models(
 
 
 def rename_models(
-    netlist: sax.AnyNetlist,
+    netlist: sax.AnyNetlist | native.Netlist | Mapping[str, native.Netlist],
     mapping: dict[sax.Name, sax.Name],
-) -> sax.AnyNetlist:
-    if _is_native_input(netlist):
-        from . import native
-
-        if native.is_native(netlist):
-            return native.rename_models(netlist, mapping)  # type: ignore[arg-type]
-        return {
-            name: native.rename_models(nl, mapping)
-            for name, nl in netlist.items()  # type: ignore[union-attr]
-        }
+) -> sax.AnyNetlist | native.Netlist | native.NativeHierarchy:
+    if native.is_native(netlist):
+        return native.rename_models(netlist, mapping)
+    if native.is_native_hierarchy(netlist):
+        return {name: native.rename_models(nl, mapping) for name, nl in netlist.items()}
+    netlist = cast(sax.AnyNetlist, netlist)
     if (recnet := sax.try_into[sax.RecursiveNetlist](netlist)) is not None:
         return {k: rename_models(v, mapping) for k, v in recnet.items()}
 

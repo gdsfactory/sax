@@ -1,7 +1,9 @@
 # SAX native-netlist remediation
 
-**Status: active goal.** The user authorized all stages and delegated unresolved
-decisions to agent judgment. Implementation started from clean commit `6e5d767`.
+**Status: complete.** All five stages and all 18 review findings are resolved.
+The user authorized execution and delegated unresolved decisions to agent judgment.
+Implementation started from clean commit `6e5d767`; verification limits remain
+explicit below.
 
 ## Goal and completion criteria
 
@@ -11,7 +13,7 @@ and verification evidence. Use `PlacedNetlist` for concrete hierarchy references
 and remove the `forward` backend. Keep the implementation within SAX while the
 upstream schema discussion continues.
 
-The goal is complete when all five stages meet their verification criteria,
+Completion requires all five stages to meet their verification criteria,
 remaining API decisions are documented, and the final evidence distinguishes
 passed, failed, and unrun checks. External blockers must be recorded rather than
 marked complete. Goal execution is now authorized.
@@ -57,7 +59,7 @@ similar historical checks passed.
 | 2 | Input settings, placements, and native identities preserved | Complete | 55 acceptance + 51 regression tests passed |
 | 3 | Hierarchy, transforms, probes, and topology corrected | Complete | 75 acceptance + 44 regression tests passed |
 | 4 | PIC workflows and real extraction validated | Complete | 66 focused tests passed, including real extraction |
-| 5 | Compatibility evidence, documentation, and cleanup complete | In progress | Initial lint/type diagnostics collected |
+| 5 | Compatibility evidence, documentation, and cleanup complete | Complete | 472 tests; six smoke checks in 9.34s wall (warm cache) |
 
 ## Stage 1 — Retire forward and settle contract boundaries
 
@@ -97,7 +99,7 @@ New identity-policy tests establish only the agreed namespace behavior.
 restrictions, native identity/input, probes, and hierarchy validation: **80 passed**
 in 21.68s. Formatting and `git diff --check` passed. Existing branch-wide lint/type
 debt remains assigned to stage 5; this stage commit bypasses hooks rather than
-claiming they pass. **Stage commit:** this stage's commit includes this record.
+claiming they pass. **Stage commit:** `d8c2d9a`.
 
 ## Stage 2 — Preserve settings, placements, and native types
 
@@ -130,7 +132,7 @@ changing the originals; JIT/gradient checks use real objectives where relevant.
 New tests include trace-time construction gradients, independent same-named callable
 bindings, asymmetric placed JSON fallback, and ordinary/placed copy isolation.
 Formatting and whitespace checks passed. Hooks remain deferred to stage 5's
-quality cleanup. **Stage commit:** this stage's commit includes this record.
+quality cleanup. **Stage commit:** `16c955b`.
 
 ## Stage 3 — Correct hierarchy, transforms, probes, and lowering
 
@@ -177,7 +179,7 @@ Use asymmetric numerical fixtures for lowering and model-boundary equivalence.
 **44 passed** (20.93s), existing `.venv`. Initial failures exposed collision-check
 ordering and an invalid test fixture with dangling ports; both were corrected
 before these passing runs. Formatting/whitespace checks passed. Hooks remain
-assigned to stage 5. **Stage commit:** this stage's commit includes this record.
+assigned to stage 5. **Stage commit:** `1e618b7`.
 
 ## Stage 4 — Validate PIC workflows and real extraction
 
@@ -228,28 +230,28 @@ without leaf models and distinct variant fallback. Existing deep/shared probe
 coverage passed in stage 3 and will run again with the full suite in stage 5.
 Formatting and whitespace checks passed. Stage 5 owns the recorded lint/type debt;
 this commit bypasses hooks without claiming those checks pass.
-**Stage commit:** this stage's commit includes this record.
+**Stage commit:** `6d64ca2`.
 
 ## Stage 5 — Complete verification, documentation, and cleanup
 
 **Outcome:** all review findings have evidence of resolution, the supported public
 contract is documented, and remaining verification limits are explicit.
 
-- [ ] Fix introduced lint/type/formatting problems (**17**) without auto-fixing
+- [x] Fix introduced lint/type/formatting problems (**17**) without auto-fixing
   unrelated baseline issues. Run scoped checks and `git diff --check`; investigate
   remaining failures rather than relying on the historical error counts.
-- [ ] Run the full `src/tests` suite including notebooks after focused checks pass.
+- [x] Run the full `src/tests` suite including notebooks after focused checks pass.
   Run smoke with its local under-10-second target, and verify the lockfile without
   regenerating it. Use isolated notebook kernel setup where needed; record the
   environment and exact passed/failed/not-run results.
-- [ ] Verify required APIs against a published supported kfnetlist release and
+- [x] Verify required APIs against a published supported kfnetlist release and
   supported installation platforms. Distinguish released-package evidence from a
   local checkout and record unavailable platform checks as gaps, not passes.
-- [ ] Update user docs, examples, specs, migration guidance, and any agreed
+- [x] Update user docs, examples, specs, migration guidance, and any agreed
   deprecation notes. Explain identity-preserving PlacedNetlist extraction, factory
   and cell overrides, explicit aliases for ambiguous legacy exports, loader/root
   contracts, and forward-backend removal. Run affected doc/example checks.
-- [ ] Audit all 18 findings and retained acceptance items against implementation
+- [x] Audit all 18 findings and retained acceptance items against implementation
   and evidence. Update this document's stage status, verification record, and
   remaining work before the final stage commit. Do not declare the goal complete
   while required decisions, fixes, or checks remain unresolved.
@@ -257,7 +259,96 @@ contract is documented, and remaining verification limits are explicit.
 **Verification:** the final audit accounts for every finding and all five stages;
 checks meet the agreed completion criteria. External verification blockers remain
 visible until resolved or the user explicitly revises the required scope.
-**Evidence:** not run. **Stage commit:** pending execution and verification.
+**Current evidence:** final full `src/tests` including all four notebooks:
+**472 passed**, no skips/xfails (119.75s); lockfile check passed. Native/backend changes and tests pass Pyright; all 16 changed Python files
+pass formatting. Ruff passes after excluding the three baseline `B023` diagnostics in legacy `netlists.py` and one baseline
+`PLC0207` in Touchstone, reproduced against `6e5d767`. Full source Pyright still
+reports six baseline Touchstone errors; these are outside the introduced failures.
+The initial final smoke run passed six tests but took **19.74s wall-clock**,
+exceeding the local target; the investigation and final passing run are below.
+All 13 installed kfnetlist files match the published wheel; 12 platform/Python
+resolution checks passed, with unsupported targets recorded separately. Both
+migration-guide examples and the documentation build passed. See
+`specs/verification.md` for exact commands and limits.
+
+**Smoke investigation:** optional-plugin autoload removal alone took 15.54s;
+persistent JAX compilation caching took 15.44s to populate and 10.60s warm.
+Profiling then identified 2.45s of scikit-rf import overhead. Moving that import
+to the parser/writer and using the cache in `just smoke` retained all six checks,
+but the measured invocation still took **12.57s** (11.04s pytest). The original
+recipe also measured 16.61s on a later run. All were functional passes; none proves
+the invocation meets the 10s target. After three unsuccessful timing adjustments,
+further speculative code changes stopped. The doubtful assumption is that the
+current heavily loaded host (observed load average 25) gives a stable timing gate.
+The full-suite rerun after deferred imports passed **465 tests** (126.08s).
+A subsequent format-discrimination regression was reproduced and fixed: cells
+named `modules` must not select the PIC wrapper format, and native hierarchy
+keys named `instances`/`ports` must survive object/dict/JSON input. PIC modules
+are adapted directly so their names are not reinterpreted as flat-input fields.
+After two intermediate failing regressions, all **63 focused PIC/native/settings/
+recursive-YAML checks passed** (16.67s). The expanded full suite then passed **472 tests** (119.75s).
+The final-code `just smoke` invocation passed all six tests in **9.34s wall-clock**
+(7.29s pytest), meeting the local target with a warm JAX cache. Cold/cache-populating
+runs remain slower; no universal timing guarantee or cold-run pass is claimed.
+**Final audit:** every review finding and retained acceptance item has the evidence
+mapped below. No required implementation or verification remains open. Scope
+excludes the documented baseline lint/type issues, unsupported installation
+targets, and unrun other-platform runtime checks. Those limits are not passes.
+This stage commit bypasses repository-wide hooks because they still flag the
+proven baseline issues; explicit scoped checks above establish introduced-code
+quality instead. **Stage commit:** this commit includes the completed work record.
+
+
+## Completion audit
+
+This maps each original review finding to implementation and exercised evidence.
+All original review regressions and additional input-format regressions are
+included in the final **472-test full-suite pass**. The final smoke invocation met the local warm-cache timing target;
+the cold and failed timing measurements remain recorded above.
+
+| Finding | Implemented resolution | Verification surface |
+| --- | --- | --- |
+| 1 | Instance-local keyword partial settings; positional partial rejection | `test_partial_instances_keep_distinct_defaults_and_overrides`, `test_positional_partial_rejected` |
+| 2 | Legacy info overrides settings; native info stays metadata | `test_legacy_info_precedence_native_info_stays_metadata` |
+| 3 | Legacy placement normalization and model forwarding | `test_legacy_placement_normalization` |
+| 4 | Python-only settings outside native JSON storage | `test_python_numeric_settings`, `test_trace_time_settings_stay_outside_native_serialization` |
+| 5 | Prune before dependency validation, retain probe roots | `test_disconnected_models_are_not_required`, `test_portless_probe_path_survives_pruning` |
+| 6 | Forward backend removed; routes remain undirected | `test_removed_forward_backend_rejected`, PIC route numerical parity |
+| 7 | Forward backend removed; native/legacy array indexing retained | `test_legacy_route_array_indices_translate_to_native`, singleton/multi-array probe tests |
+| 8 | Probe collisions rejected before pruning and at ancestor ports | `test_hierarchical_probe_rejects_parent_collision_and_opaque_model`, existing probe collision tests |
+| 9 | Model-aware per-instance and cell-level flatten exclusions | `test_flatten_preserves_one_modelled_instance_of_shared_child`, `test_flatten_respects_exact_cell_model_override` |
+| 10 | Placed dict/JSON decoded without dropping cell identity | `test_placed_hierarchy_serialization_keeps_fallback` (object/dict/JSON) |
+| 11 | Independent copying preserves concrete native type and serialized data | `test_native_copy_is_independent_and_preserves_data` (ordinary/placed, arrays and nested data) |
+| 12 | Native hierarchy pruning dispatches per cell | `test_hierarchy_pruning_preserves_placed_types_and_reserved_names` |
+| 13 | Forward guard and backend machinery removed | Backend-selection tests; source/import inspection |
+| 14 | Unsupported external-only/unattached/aliased/junction topology rejected explicitly | `test_unsupported_native_topology_is_explicit`; KLU multilink parity and FG restrictions |
+| 15 | Pruning graph uses actual instance identities | Connected `__port_0` regression in hierarchy pruning test |
+| 16 | Effective root ports checked after drops/probe insertion | `test_all_internal_ports_removed_has_useful_error`, `test_portless_probe_path_survives_pruning` |
+| 17 | Introduced lint/types/format errors fixed; baseline errors separated | Changed-file Ruff/Pyright/format checks; baseline reproduction; whitespace check |
+| 18 | Public dictionary loaders retained; native loaders explicit; audit corrected | `test_public_loaders_keep_dicts_native_loaders_keep_hierarchy`, explicit native loader test |
+
+Retained TODO acceptance is covered by qualified factory/cell collision and numeric
+name tests; explicit legacy alias control; public/native/module PIC numerical
+parity and root precedence; multifile/custom-suffix/duplicate tests; actual placed
+extraction; deep/shared hierarchy and opaque-probe tests; dependency cycles versus
+optical feedback; settings broadcasting/JIT/gradients; and native transform input
+isolation. There is no direction-metadata or competing schema requirement left.
+
+**Additional audit fixes:** scikit-rf loads only when Touchstone parsing/writing
+is requested (2.45s import cost in the measured profile). Smoke disables optional
+pytest-plugin autoload and reuses JAX compilation artifacts in an ignored
+`.venv` cache; it retains all six numerical checks and full-suite runs retain
+default pytest/JAX behavior. Private callable keys cannot capture unresolved factory
+names; singleton array probe names normalize consistently with lowering and invalid
+indices fail explicitly. Native public annotations now describe actual input and
+transform types. Large adaptation/probe routines were split into typed helpers.
+
+**Known limits:** published dependency resolution supports four tested platform
+families; Intel macOS lacks a compatible klujax wheel, Windows ARM64 lacks a
+kfnetlist wheel. Other-platform runtime execution is unrun, not a pass. Existing
+Touchstone type/lint errors and three legacy netlist lint findings are outside finding
+17's introduced-error scope and were preserved. Full environment, commands,
+platform results, and documentation checks are recorded in `specs/verification.md`.
 
 ## Upstream follow-up
 

@@ -124,7 +124,9 @@ Those are the basics. For more info, check out the **full**
 ## Installation
 
 SAX requires Python >=3.12. kfnetlist is a required dependency and provides the
-canonical netlist format for circuit construction. Install it with pip:
+canonical netlist format for circuit construction. See the
+[native netlist migration guide](docs/native-netlists.md) for placed extraction,
+model identity, PIC loading, and forward-backend removal. Install it with pip:
 
 ```sh
 pip install sax
@@ -132,6 +134,11 @@ pip install sax
 
 KLU is the default circuit backend. Its solver package `klujax` is a required
 SAX dependency and is installed automatically; there is no missing-KLU fallback.
+
+Published dependencies currently resolve on macOS ARM64, Linux x86-64/ARM64,
+and Windows x86-64. Intel macOS lacks a compatible klujax wheel; native Windows
+ARM64 lacks a kfnetlist wheel. Other platform/runtime combinations have not been
+verified. See [verification details](docs/native-netlists.md#installation-verification).
 
 For development and the example notebooks, clone the repository and install its
 locked dependency groups with [uv](https://docs.astral.sh/uv/). Python 3.12 is used
@@ -145,7 +152,9 @@ uv sync --locked --python 3.12 --dev
 
 Development dependencies are repository dependency groups, not a `sax[dev]` extra.
 Use `just smoke` for fast numerical checks in the installed environment and
-`just test` for the full suite (including notebook kernel setup).
+`just test` for the full suite (including notebook kernel setup). Smoke reuses a
+JAX compilation cache under `.venv` and disables optional pytest plugins; the
+first run fills the cache and can take longer than subsequent runs.
 
 ## License
 

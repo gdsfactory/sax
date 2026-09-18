@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import sax
+from sax import native
 
 
 def _component(wl: sax.FloatArrayLike = 1.55, gain: float = 1.0) -> sax.SDict:
@@ -64,10 +65,10 @@ def _native_issue120_fixture() -> dict:
     """Native placed hierarchy: one factory, two distinct instantiated cells."""
     kf = pytest.importorskip("kfnetlist")
     del kf
-    from kfnetlist import Netlist, Placement, PlacedNetlist
+    from kfnetlist import PlacedNetlist, Placement
 
-    port = sax.native.NetlistPort
-    ref = sax.native.PortRef
+    port = native.NetlistPort
+    ref = native.PortRef
 
     def sub() -> PlacedNetlist:
         nl = PlacedNetlist()

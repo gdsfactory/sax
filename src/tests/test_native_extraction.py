@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from kfnetlist import PlacedNetlist
+from kfnetlist import PlacedInstance, PlacedNetlist
 from kfnetlist.extract import extract
 
 import sax
@@ -32,7 +32,7 @@ def test_placed_extraction_preserves_factory_and_variant_identity(
 ) -> None:
     gf = pytest.importorskip("gdsfactory")
     kf = pytest.importorskip("kfactory")
-    previous_pdk = getattr(gf.pdk, "_ACTIVE_PDK")
+    previous_pdk = gf.pdk._ACTIVE_PDK  # noqa: SLF001 - restore optional PDK state
     monkeypatch.setattr(gf.pdk, "_ACTIVE_PDK", previous_pdk)
     gf.gpdk.PDK.activate()
     try:
@@ -63,6 +63,8 @@ def test_placed_extraction_preserves_factory_and_variant_identity(
         )
         assert all(isinstance(cell, PlacedNetlist) for cell in cells.values())
         a, b = cells[top.name].instances["a"], cells[top.name].instances["b"]
+        assert isinstance(a, PlacedInstance)
+        assert isinstance(b, PlacedInstance)
         assert a.component == b.component
         assert a.cell != b.cell
         wire_factory = cells[a.cell].instances["wire"].component

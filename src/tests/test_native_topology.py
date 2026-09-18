@@ -1,5 +1,6 @@
 from functools import partial
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from kfnetlist import Netlist, NetlistPort, PlacedNetlist, PortArrayRef, PortRef
@@ -10,7 +11,7 @@ from sax.netlists import remove_unused_instances
 
 
 def _gain(gain: float = 1.0) -> sax.SDict:
-    return {("in", "out"): gain, ("out", "in"): gain / 2}
+    return {("in", "out"): jnp.asarray(gain), ("out", "in"): jnp.asarray(gain) / 2}
 
 
 def _single(component: str = "gain", name: str = "a") -> Netlist:
@@ -74,7 +75,9 @@ def test_flatten_preserves_one_modelled_instance_of_shared_child(
     models = {"analytical": partial(_gain, gain=7), "gain": _gain}
     expected, _ = sax.circuit(cells, models, backend=backend)
     flat = native.flatten_netlist(cells, "top", models=models)
-    assert "a" in flat.instances and "b__a" in flat.instances
+    assert isinstance(flat, PlacedNetlist)
+    assert "a" in flat.instances
+    assert "b__a" in flat.instances
     assert flat.instances["a"].cell == "child"
     actual, _ = sax.circuit(flat, models, backend=backend)
     for key, value in expected().items():
@@ -148,7 +151,7 @@ def test_unsupported_native_topology_is_explicit(case: str) -> None:
 
 def test_explicit_multilinks_keep_klu_coefficients_and_fg_restriction() -> None:
     flat = {
-        "instances": {name: "gain" for name in ("a", "b", "c")},
+        "instances": dict.fromkeys(("a", "b", "c"), "gain"),
         "nets": [
             {"p1": "a,out", "p2": "b,in"},
             {"p1": "a,out", "p2": "c,in"},
@@ -186,3 +189,28 @@ def test_array_probe_and_transform_preserve_settings() -> None:
     np.testing.assert_allclose(model()["in", "out"], 9)
     assert "tap_fwd" in sax.get_ports(model())
     assert "arr" in nl.instances
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_hierarchical_probe_array_names_match_lowering(count: int) -> None:
+    top = Netlist()
+    top.create_inst("sub", kcl="", component="child", na=count, nb=1)
+    for port in ("in", "out"):
+        top.create_port(port)
+        top.create_net(
+            NetlistPort(name=port),
+            PortArrayRef(instance="sub", ia=1, ib=1, port=port),
+        )
+    model, _ = sax.circuit(
+        {"top": top, "child": _single()},
+        {"gain": _gain},
+        probes={"tap": "sub<0.0>.a<0.0>,out"},
+    )
+    assert {"tap_fwd", "tap_bwd"} <= set(sax.get_ports(model()))
+    np.testing.assert_allclose(model()["in", "out"], 1)
+    with pytest.raises(ValueError, match=r"outside.*array dimensions"):
+        sax.circuit(
+            {"top": top, "child": _single()},
+            {"gain": _gain},
+            probes={"tap": f"sub<{count}.0>.a,out"},
+        )

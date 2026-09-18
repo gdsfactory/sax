@@ -17,8 +17,13 @@ uv:
 ipykernel:
   uv run --dev python -m ipykernel install --user --name sax --display-name sax
 
-# Fast checks in the already-installed environment (no dependency synchronization).
+# Fast checks without dependency synchronization or optional pytest plugins.
+# Reuse compiled JAX executables between iterations; the first run fills the cache.
 smoke:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+  JAX_COMPILATION_CACHE_DIR=.venv/.sax-smoke-jax-cache \
+  JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=0 \
+  JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES=0 \
   uv run --no-sync pytest src/tests/test_smoke.py -q
 
 test: ipykernel

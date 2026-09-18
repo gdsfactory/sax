@@ -6,6 +6,7 @@ extra_css = ["assets/custom.css"]
 extra_javascript = ["https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 nav = [
   {"home" = "index.md"},
+  {"native netlists" = "native-netlists.md"},
   {"examples" = [
     {"quick start" = "nbs/examples/01_quick_start.md"},
     {"all pass" = "nbs/examples/02_all_pass_filter.md"},

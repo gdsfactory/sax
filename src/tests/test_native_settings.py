@@ -77,7 +77,9 @@ def test_legacy_info_precedence_native_info_stays_metadata() -> None:
 
 @pytest.mark.parametrize("value", [np.array([2, 3]), jnp.array([2, 3]), 2 + 3j])
 @pytest.mark.parametrize("backend", ["klu", "fg"])
-def test_python_numeric_settings(value: object, backend: sax.BackendLike) -> None:
+def test_python_numeric_settings(
+    value: sax.ComplexArrayLike, backend: sax.BackendLike
+) -> None:
     net = _flat({"component": "gain", "settings": {"gain": value}})
     model, _ = sax.circuit(net, {"gain": _gain}, backend=backend)
     np.testing.assert_allclose(model()["in", "out"], value)
@@ -161,7 +163,7 @@ def test_placed_hierarchy_serialization_keeps_fallback(encoding: str) -> None:
 
 
 @pytest.mark.parametrize("placed", [False, True])
-def test_native_copy_is_independent_and_preserves_data(placed: bool) -> None:
+def test_native_copy_is_independent_and_preserves_data(*, placed: bool) -> None:
     nl = _placed_hierarchy()["top"] if placed else Netlist()
     nl.create_inst(
         "array",
@@ -180,4 +182,15 @@ def test_native_copy_is_independent_and_preserves_data(placed: bool) -> None:
     assert nl.to_dict() == before
     assert "array" not in copied.instances
     if placed:
+        assert isinstance(copied, PlacedNetlist)
         assert copied.instances["a"].cell == "child"
+
+
+def test_callable_binding_cannot_capture_an_unbound_factory() -> None:
+    net = {
+        "instances": {"a": _gain, "b": "_sax_callable_0"},
+        "connections": {"a,out": "b,in"},
+        "ports": {"in": "a,in", "out": "b,out"},
+    }
+    with pytest.raises(ValueError, match=r"Missing models.*_sax_callable_0"):
+        sax.circuit(net)

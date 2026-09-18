@@ -8,6 +8,8 @@ factory name, and falls back to distinct instantiated cells. See
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -39,7 +41,7 @@ def _leaf(v: float = 1.0) -> sax.SDict:
     return sax.reciprocal({("in0", "out0"): jnp.asarray(v)})
 
 
-def _chain(components: list[tuple[str, dict]], ports: bool = True) -> Netlist:
+def _chain(components: list[tuple[str, dict]], *, ports: bool = True) -> Netlist:
     nl = Netlist()
     for name, spec in components:
         nl.create_inst(
@@ -377,10 +379,11 @@ def test_load_pic_yaml_modules() -> None:
     assert isinstance(cells["child"], Netlist)
 
 
-def test_load_native_recursive_netlist(tmp_path) -> None:
+def test_load_native_recursive_netlist(tmp_path: Path) -> None:
     top = tmp_path / "top.pic.yml"
     top.write_text(
-        "instances:\n  sub:\n    component: child\nports:\n  in0: sub,in0\n  out0: sub,out0\n"
+        "instances:\n  sub:\n    component: child\n"
+        "ports:\n  in0: sub,in0\n  out0: sub,out0\n"
     )
     child = tmp_path / "child.pic.yml"
     child.write_text(
@@ -399,12 +402,15 @@ def test_load_native_recursive_netlist(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_circuit_bypasses_legacy_kfnetlist_adapter(monkeypatch) -> None:
+def test_circuit_bypasses_legacy_kfnetlist_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`circuit` must not call the kfnetlist→SAX-dictionary adapter."""
     import sax.parsers.kfnetlist as kfparser
 
-    def _boom(*args, **kwargs):
-        raise AssertionError("legacy kfnetlist adapter was called")
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        msg = "legacy kfnetlist adapter was called"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(kfparser, "_convert_flat", _boom)
     monkeypatch.setattr(kfparser, "parse_kfnetlist", _boom)
@@ -422,11 +428,14 @@ def test_circuit_bypasses_legacy_kfnetlist_adapter(monkeypatch) -> None:
     np.testing.assert_allclose(complex(native_model()["in0", "out0"]), 6.0)
 
 
-def test_circuit_does_not_use_legacy_recursive_netlist_helper(monkeypatch) -> None:
-    import sax.netlists as netlists
+def test_circuit_does_not_use_legacy_recursive_netlist_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sax import netlists
 
-    def _boom(*args, **kwargs):
-        raise AssertionError("legacy recursive-netlist normalization was used")
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        msg = "legacy recursive-netlist normalization was used"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(netlists, "netlist", _boom)
     monkeypatch.setattr(netlists, "remove_unused_instances", _boom)
@@ -476,7 +485,7 @@ def test_native_flatten_netlist() -> None:
     cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
     flat = native.flatten_netlist(cells, "top")
     assert isinstance(flat, Netlist)
-    instances, nets, ports = native.lower(flat)
+    instances, _nets, ports = native.lower(flat)
     assert "x__x__w" in instances
     assert ports == {"in0": "x__x__w,in0", "out0": "x__x__w,out0"}
 

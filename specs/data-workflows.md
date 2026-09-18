@@ -14,8 +14,8 @@
 | `parse_mosaic` | Read dictionary/YAML/path; map components and properties into instances, nets, external ports |
 
 `sax.circuit` builds every circuit through the native kfnetlist path:
-`native.to_hierarchy` adapts legacy dictionaries, `.pic.yml`/native JSON, and
-native objects into `{cell: Netlist}` plus an explicit root,
+`native.to_hierarchy` adapts legacy dictionaries, parsed PIC documents, native JSON,
+and native objects into `{cell: Netlist}` plus an explicit root,
 and `_circuit_native` lowers them to backend tables. Native input is never turned
 into SAX's legacy dictionary schema for construction. The forward backend and direction hints have been removed. Factory
 `component` models are resolved before descending into a distinct
@@ -44,6 +44,9 @@ Evidence: [`parsers/kfnetlist.py`](../src/sax/parsers/kfnetlist.py),
 [`test_kfnetlist_parser.py`](../src/tests/test_kfnetlist_parser.py), skipped in the
 original baseline environment; all 33 tests ran successfully during final remediation
 with kfnetlist 0.3.0 installed.
+
+scikit-rf is imported when Touchstone parsing/writing is requested, rather than
+during `import sax`; parser and writer numerical behavior is unchanged.
 
 ## Tabular S-parameter interchange
 
@@ -149,3 +152,12 @@ and preserves nested settings/info, arrays, topology, cell references, and geome
 Circuit preparation stores Python-only legacy settings outside the native object;
 pure native adapters/loaders retain native JSON-compatible storage constraints.
 Evidence: `src/tests/test_native_settings.py`.
+
+
+Native PIC loading has explicit root selection and retains multi-module hierarchy.
+Public loader dictionaries remain supported and preserve raw document metadata;
+unsupported module settings/info/metadata and `${...}` expressions are rejected
+by native loading. Standalone recursive file keys use the same `clean_string`
+normalization and duplicate rejection as the public loader. See the root/loader
+contract in [circuits](circuits.md) and runnable examples in
+[the migration guide](../docs/native-netlists.md).

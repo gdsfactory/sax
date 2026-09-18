@@ -1,5 +1,6 @@
 from functools import partial
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from kfnetlist import NetlistPort, PlacedNetlist, PortRef
@@ -9,7 +10,7 @@ from sax import native
 
 
 def _model(gain: float = 1.0) -> sax.SDict:
-    return {("in", "out"): gain, ("out", "in"): gain / 2}
+    return {("in", "out"): jnp.asarray(gain), ("out", "in"): jnp.asarray(gain) / 2}
 
 
 def _two_libraries() -> PlacedNetlist:
@@ -42,7 +43,7 @@ def test_qualified_factories_and_cell_override(backend: sax.BackendLike) -> None
 
 
 def test_unqualified_factory_collision_is_explicit() -> None:
-    with pytest.raises(ValueError, match="Ambiguous factory.*coupler2"):
+    with pytest.raises(ValueError, match=r"Ambiguous factory.*coupler2"):
         sax.circuit(_two_libraries(), {"coupler2": _model})
 
 
@@ -59,7 +60,7 @@ def test_single_library_keeps_exact_numeric_factory_name() -> None:
     nl = PlacedNetlist.from_dict(data)
     model, _ = sax.circuit(nl, {"coupler2": _model})
     np.testing.assert_allclose(model()["a_in", "a_out"], 1)
-    with pytest.raises(ValueError, match="Missing models.*factory='coupler2'"):
+    with pytest.raises(ValueError, match=r"Missing models.*factory='coupler2'"):
         sax.circuit(nl, {"coupler": _model})
 
 

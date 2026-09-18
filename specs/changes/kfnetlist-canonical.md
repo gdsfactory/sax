@@ -27,8 +27,8 @@ follow-up work: [`work.md`](../../work.md). Existing contracts remain in
 
 ### Dependency and Python support
 
-kfnetlist is a required dependency (`kfnetlist>=0.3.0,<0.4.0`). Every kfnetlist
-release declares `Requires-Python >= 3.12` and ships only `cp312-abi3` wheels, so
+kfnetlist is a required dependency (`kfnetlist>=0.3.0,<0.4.0`). The supported 0.3.0 release declares `Requires-Python >= 3.12` and ships
+`cp312-abi3` wheels, so
 SAX's minimum Python was raised to `>=3.12` to make the canonical native path
 unconditional. The legacy circuit builder/fallback and the old internal schema
 were removed; `sax.circuit` and `get_required_circuit_models` always build native
@@ -344,11 +344,11 @@ suite including notebooks before declaring the migration implemented.
 | Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
 | Explicit native loaders/transforms produce native; public loaders retain dicts | `test_explicit_native_pic_loader_returns_native` and `test_public_loaders_keep_dicts_native_loaders_keep_hierarchy`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
 | Forward backend removed | `test_backend_selection.py`: explicit rejection, retained KLU/FG reconvergence |
-| Python compatibility | `kfnetlist>=0.3.0,<0.4.0` required; `requires-python = ">=3.12"` (all kfnetlist releases require 3.12); README and classifiers updated |
+| Python compatibility | `kfnetlist>=0.3.0,<0.4.0` required; `requires-python = ">=3.12"` (supported release requires 3.12); README and classifiers updated |
 | Package/lock validity | `uv lock`, `uv lock --check` pass |
-| Full regression | full `src/tests` incl. notebooks: 416 passed, 1 xfailed; `uv lock --check` passes |
+| Full regression | Remediation: 472 passed, no skips/xfails, including all four notebooks; `uv lock --check` passes; current evidence in `work.md` and `specs/verification.md` |
 
-## Remaining work / decision needed
+## Final contract and verification
 
 Circuit construction, required-model discovery, and native transforms use
 kfnetlist objects; the legacy builder/fallback was removed. Public loaders retain
@@ -356,3 +356,16 @@ dictionary returns. Python >=3.12, mandatory kfnetlist, forward-backend removal,
 and explicit errors for unsupported topology are deliberate compatibility changes.
 The staged completion audit and current verification are maintained in `work.md`;
 historical passing runs above do not establish completion of that remediation.
+
+
+The five-stage remediation supersedes the initial investigation's completion
+claims. Published kfnetlist 0.3.0 was verified against the installed package,
+including the native extension; all 13 package files match the release wheel.
+Real gdsfactory extraction is now covered by `test_native_extraction.py` rather
+than only a temporary investigation script. PIC contract tests cover actual public
+loader returns, root selection, arrays, and numerical module loading.
+
+Remaining upstream replacement work is tracked in issues 22–24 and is not needed
+for the SAX implementation. Platform limits and unchanged baseline quality
+errors are recorded in `specs/verification.md`; untested platforms are not claimed
+as runtime passes. See `docs/native-netlists.md` for migration examples.

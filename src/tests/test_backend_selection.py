@@ -7,11 +7,11 @@ import sax
 
 
 def _split() -> sax.SDict:
-    return {("in0", "out0"): 0.2, ("in0", "out1"): 0.3}
+    return {("in0", "out0"): jnp.asarray(0.2), ("in0", "out1"): jnp.asarray(0.3)}
 
 
 def _merge() -> sax.SDict:
-    return {("in0", "out0"): 0.4, ("in1", "out0"): 0.5}
+    return {("in0", "out0"): jnp.asarray(0.4), ("in1", "out0"): jnp.asarray(0.5)}
 
 
 def _waveguide(gain: sax.FloatArrayLike = 0.8) -> sax.SDict:
@@ -34,12 +34,14 @@ def test_unequal_depth_reconvergence_matches_physical_solvers() -> None:
             jax.jit(circuit)(w={"gain": gain})["in0", "out0"], expected
         )
         gradient = jax.grad(
-            lambda g: jnp.real(circuit(w={"gain": g})["in0", "out0"]).sum()
+            lambda g, circuit=circuit: jnp.real(
+                circuit(w={"gain": g})["in0", "out0"]
+            ).sum()
         )(0.8)
         np.testing.assert_allclose(gradient, 0.15)
 
 
 @pytest.mark.parametrize("backend", ["forward", "FORWARD"])
 def test_removed_forward_backend_rejected(backend: str) -> None:
-    with pytest.raises(ValueError, match="Invalid backend.*forward"):
+    with pytest.raises(ValueError, match=r"Invalid backend.*forward"):
         sax.circuit({}, backend=backend)  # type: ignore[call-overload]
