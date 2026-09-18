@@ -216,7 +216,9 @@ def reciprocal(sdict: sax.SDict) -> sax.SDict:
 
     Reciprocity is a fundamental property of passive optical devices where
     the S-parameter from port i to port j equals the S-parameter from port j
-    to port i. This function enforces reciprocity by copying existing values.
+    to port i. This function copies values without conjugation. If both directions
+    are supplied with conflicting values, the first direction in dictionary order
+    defines both entries (also safe under JAX tracing).
 
     Args:
         sdict: S-matrix in SDict format.
@@ -232,10 +234,13 @@ def reciprocal(sdict: sax.SDict) -> sax.SDict:
         # Result: {("in", "out"): 0.9+0.1j, ("out", "in"): 0.9+0.1j}
         ```
     """
-    return {
-        **{(p1, p2): v for (p1, p2), v in sdict.items()},
-        **{(p2, p1): v for (p1, p2), v in sdict.items()},
-    }
+    result = dict(sdict)
+    seen = set()
+    for (p1, p2), value in sdict.items():
+        if (p1, p2) not in seen:
+            result[p1, p2] = result[p2, p1] = value
+            seen.update(((p1, p2), (p2, p1)))
+    return result
 
 
 def block_diag(*arrs: Array) -> Array:
@@ -359,7 +364,7 @@ def get_modes(S: sax.STypeMM) -> tuple[sax.Mode, ...]:
         # Result: ("TE", "TM")
         ```
     """
-    return tuple(get_mode(pm) for pm in get_ports(S))
+    return tuple(natsorted({get_mode(pm) for pm in get_ports(S)}))
 
 
 @validate_call

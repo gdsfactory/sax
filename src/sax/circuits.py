@@ -605,7 +605,8 @@ def _enforce_return_type(model: sax.Model, return_type: Any) -> sax.Model:  # no
         return_type = return_type.lower()
     stype = stypes.get(return_type)
     if stype is None:
-        return model
+        msg = f"Invalid return_type {return_type!r}; expected SDict, SCoo, or SDense."
+        raise ValueError(msg)
     return stype(model)
 
 

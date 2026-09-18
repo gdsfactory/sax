@@ -474,15 +474,15 @@ def expand_probes(  # noqa: PLR0912,PLR0915,C901
         netlist: The netlist to expand probes in.
         probes: A mapping from probe names to instance ports where probes should
             be inserted. Instance ports can use dot-separated paths to target
-            sub-circuits (e.g. ``"sub1.wg1,out0"``). If the instance port is
-            part of an existing connection, a 4-port probe is inserted. If the
-            instance port is unconnected, only the "X_fwd" port is created as a
-            direct alias.
+            sub-circuits (e.g. ``"sub1.wg1,out0"``). A 4-port probe is inserted
+            for connected, boundary, and truly unconnected targets. At a boundary
+            the existing external port is routed through the probe; otherwise an
+            unconnected target leaves the probe's input dangling. "X_fwd" measures
+            the wave traveling INTO the targeted instance port.
 
     Returns:
         A new netlist with probe instances inserted and connections/ports updated.
-        For probes on connected ports, two new ports are added: "X_fwd" and "X_bwd".
-        For probes on unconnected ports, only "X_fwd" is added.
+        Every probe adds two ports: "X_fwd" and "X_bwd".
 
     Raises:
         ValueError: If probe ports would conflict with existing ports, or if a

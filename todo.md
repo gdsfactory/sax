@@ -92,17 +92,19 @@ Reader/writer directions are tested independently; related input fixes share a c
   Sources: `src/sax/backends/__init__.py`, `src/sax/backends/klu.py`.
   KLU stays mandatory (existing metadata); removed unreachable fallback.
   Default/isolated-import tests plus smoke: **6 passed**.
-- [ ] **Align smaller API behaviors and documentation.**
-  - [ ] Decide unique-mode ordering for `get_modes` and test multiple ports.
+- [x] **Align smaller API behaviors and documentation.**
+  Unique natural-order modes, first-direction-wins reciprocity, invalid return-type
+  rejection, and probe docs aligned. API/probe/smoke suite: **47 passed**.
+  - [x] Decide unique-mode ordering for `get_modes` and test multiple ports.
     Reproduced: it repeats modes despite documenting uniqueness.
     Source: `src/sax/s.py`.
-  - [ ] Correct unconnected-probe documentation to match the tested two-tap
+  - [x] Correct unconnected-probe documentation to match the tested two-tap
     behavior, unless an intentional behavior change is requested.
     Source: `src/sax/netlists.py`.
-  - [ ] Decide whether unsupported circuit `return_type` values should raise.
+  - [x] Decide whether unsupported circuit `return_type` values should raise.
     Inspected: they silently leave the output unwrapped.
     Source: `src/sax/circuits.py`.
-  - [ ] Define `reciprocal` behavior for conflicting directional entries.
+  - [x] Define `reciprocal` behavior for conflicting directional entries.
     Inspected: it swaps conflicting values instead of enforcing equality.
     Source: `src/sax/s.py`.
 - [ ] **Reconcile dependency declarations and the lockfile.** Reproduced:

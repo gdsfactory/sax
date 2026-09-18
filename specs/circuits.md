@@ -83,8 +83,8 @@ keys may reach the model and raise an error. Do not assume root netlist `setting
 are automatically applied: `_flat_circuit` builds defaults from instances/models.
 
 Return formats are `SDict` (default), `SCoo`, and `SDense`. The implementation
-recognizes additional aliases/types and silently leaves unrecognized return types
-unwrapped; callers should use documented values rather than rely on that fallback.
+recognizes additional aliases/types, but unsupported return types raise `ValueError`.
+`test_api_contracts.py` verifies rejection and all three documented formats.
 
 Evidence: [`circuits.py`](../src/sax/circuits.py) (`circuit`, `_flat_circuit`,
 `_forward_global_settings`, `resolve_array_instances`),
@@ -116,8 +116,8 @@ Explicit `probes={"mid": "a,out0"}` inserts `_ideal_probe` and exposes `mid_fwd`
 and `mid_bwd`. **Forward means traveling into the targeted instance port**, not
 left-to-right netlist order. Both tap ports are currently created for connected,
 boundary, and truly unconnected targets. Boundary probes preserve the original
-external port through the probe. The docstring's unconnected-alias description is
-outdated.
+external port through the probe. The docstring now explicitly describes both taps
+for all target types.
 
 Dot-separated paths such as `sub.a,out0` target hierarchical instances and expose
 taps through parents. Invalid hierarchy paths and generated name collisions raise

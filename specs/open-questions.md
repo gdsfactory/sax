@@ -9,7 +9,7 @@ separately from runtime reproduction. Do not infer an exhaustive bug audit.
 | Observation | Evidence | Next check |
 | --- | --- | --- |
 | **Resolved:** custom modes now apply to dense as well as dictionary/COO values and wrappers | `test_custom_modes.py` | All formats tested for custom-mode replication and extraction |
-| `get_modes` repeats mode names per port despite documenting uniqueness | **Reproduced**; [`s.py`](../src/sax/s.py), `get_modes` | Decide unique ordering and test multiple ports |
+| **Resolved:** `get_modes` returns unique naturally sorted modes | `test_api_contracts.py` | Multiple ports and all representations tested |
 | **Resolved:** duplicate COO coordinates sum in both dictionary and dense conversion | `test_sparse_duplicates.py` | Batch, cancellation, round-trip, JIT, and gradient checks |
 | **Resolved:** `phase_shifter.loss` documented as dB/µm, retaining its historical formula | `test_phase_shifter.py` | Length scaling, zero-length limit, voltage phase, and gradient checked |
 | **Resolved:** constant feature/target columns use unit normalization scale | `test_fit_degenerate.py` | Finite fits, prediction index preservation, and symbolic export equivalence tested |
@@ -19,7 +19,7 @@ Reproduction seeds for the first two observations:
 ```python
 s = {("in0", "out0"): 1.0}
 sax.get_ports(sax.multimode(sax.sdense(s), modes=("X",)))  # now X (previously TE/TM)
-sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
+sax.get_modes(sax.multimode(s))  # now ("TE", "TM")
 ```
 
 ## Construction and topology
@@ -29,7 +29,7 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 | **Resolved:** KLU remains mandatory and the unreachable fallback was removed | `test_backend_dependency.py` | Isolated missing-dependency import and normal defaults tested |
 | **Resolved:** explicit DAG acyclicity validation produces a dependency-cycle diagnostic | `test_hierarchy_validation.py` | Self/multi-component cycles rejected; optical feedback still works |
 | **Resolved:** flattening and renaming now rewrite `nets` and preserve net metadata | `test_netlist_transforms.py`: KLU/FG equivalence, metadata, repeated endpoints, input isolation | Legacy `~` flattened names still require a valid identifier separator such as `__` for circuit construction |
-| Unconnected probes actually insert the four-port model and expose both taps, contrary to the alias-only docstring | **Inspected and covered by passing tests**; `expand_probes`, `test_probe_on_truly_unconnected_port` in [`test_probes.py`](../src/tests/test_probes.py) | Likely documentation correction; preserve tested behavior unless deliberately changed |
+| **Resolved:** probe documentation now describes both taps at unconnected/boundary targets | Existing `test_probes.py` regressions rerun | Runtime behavior preserved |
 | **Resolved:** recursive YAML loading uses a suffix wildcard and deterministic ordering, preserving the root first | `test_recursive_yaml.py` | Default/custom suffixes, nested files, ignored nonmatches, and duplicate-name rejection tested |
 
 KLU now computes a joint broadcast shape, verified by `test_backend_broadcasting.py`;

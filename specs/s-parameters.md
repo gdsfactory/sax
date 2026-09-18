@@ -34,9 +34,10 @@ arbitrary sparse maps: COO-to-dense sizes the result from `len(port_map)`.
 - Repeated COO coordinates **sum** in both dense and dictionary conversions.
   Round trips preserve numerical values, not the original duplicate storage layout.
   `test_sparse_duplicates.py` covers batches, cancellation, JIT, and gradients.
-- `reciprocal` overlays reversed entries, without conjugation. Supply one direction
-  per pair or already equal values. Conflicting two-direction input is swapped,
-  not reconciled into a symmetric matrix.
+- `reciprocal` copies entries without conjugation. For conflicting directions,
+  the first supplied direction defines both values. It preserves the input object
+  and supports traced values without data-dependent comparisons.
+  `test_api_contracts.py` checks conflicts, diagonal entries, JIT, and gradients.
 - `get_ports` and `get_port_combinations` reject unevaluated callables.
 - `block_diag` requires square last-two axes and identical batch shapes.
 
@@ -60,8 +61,8 @@ with care, especially when selecting a non-first mode.
 
 Custom `modes` are honored for all three representations and model wrappers;
 `test_custom_modes.py` covers replication, extraction, and absent cross-mode coupling.
-`get_modes` currently returns a mode for each port rather than unique modes;
-see [open questions](open-questions.md).
+`get_modes` returns unique mode names in natural sorted order across all formats,
+verified by `test_api_contracts.py`.
 
 Evidence: [`multimode.py`](../src/sax/multimode.py), `get_modes` in `s.py`.
 Tests: [`02_multimode.ipynb`](../src/tests/nbs/02_multimode.ipynb) covers default-mode
