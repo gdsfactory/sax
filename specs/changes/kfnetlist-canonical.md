@@ -23,8 +23,22 @@ checklist: [`todo.md`](../../todo.md). Existing contracts remain in
 | ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
 | Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
 | Native flatten transforms (`flatten_netlist`, `flatten_recursive_netlist`) | Implemented using kfnetlist's `flatten_netlists` |
-| Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and by legacy utility transforms; no longer used for circuit construction |
-| Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained as public compatibility utilities; prefer the native transforms |
+| Legacy fallback when kfnetlist is unavailable (Python 3.11 / minimal install) | Implemented; `_NATIVE_AVAILABLE` guard |
+| Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and used by the no-kfnetlist fallback; not used for native circuit construction |
+| Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained as public compatibility utilities and fallback |
+
+### Dependency and Python support
+
+kfnetlist 0.3.0 publishes `cp312-abi3` wheels and declares
+`Requires-Python >= 3.12`, while SAX advertises Python 3.11+. To preserve 3.11
+support without authorization to drop it, kfnetlist is declared as
+`kfnetlist>=0.3.0,<0.4.0; python_version >= '3.12'` and the native import is
+guarded. On 3.12+ it is the canonical path; on 3.11 (or any install without
+kfnetlist) `sax.circuit` uses the legacy adapter, which is documented by
+`src/tests/test_native_fallback.py`. Making the native path mandatory requires
+either upstream 3.11 wheels or an authorized SAX minimum-version bump. `uv lock`
+and `uv lock --check` pass. This remaining dual path is the main deviation from
+the "single native path" goal and should be revisited when kfnetlist ships 3.11.
 
 ### Directed connections versus undirected nets
 
@@ -325,3 +339,29 @@ subcircuits; namespace collisions; arrays; cycles; probes; multiply connected
 backend restrictions; settings precedence, JIT, and gradients. Keep smoke below
 10 seconds locally, put heavy layout integration outside it, and run the full SAX
 suite including notebooks before declaring the migration implemented.
+
+## Requirement-to-evidence audit
+
+| Requirement | Evidence |
+| --- | --- |
+| Native objects are canonical for circuit construction | `_circuit_native`; monkeypatch tests `test_circuit_bypasses_legacy_kfnetlist_adapter`, `test_circuit_does_not_use_legacy_recursive_netlist_helper` |
+| Factory/cell distinction (#120) | `native.resolve`; `test_factory_model_applies_to_all_variants`, `test_distinct_cell_fallback_without_factory_model`, smoke `test_native_counted_hierarchy_model_identity` |
+| Legacy/`.pic.yml` adapt *into* native | `from_legacy_flat`, `to_hierarchy`, `load_pic_yaml`; `test_legacy_flat_adapts_to_native`, `test_load_pic_yaml_flat`, `test_load_pic_yaml_modules` |
+| No suffix guessing / no blanket flatten | No such code; `test_legacy_counted_names_remain_ambiguous` documents the ambiguity |
+| Model overrides, missing-model diagnostics | `test_cell_specific_override_beats_factory_model`, `test_missing_model_reports_factory_and_cell` |
+| Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
+| PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist` |
+| Directed `forward` semantics preserved | `legacy_orientation` + `lower(orientation=...)`; legacy forward tests pass; `test_native_forward_backend_direction_blocker` xfail documents the native limitation |
+| Python compatibility preserved | `kfnetlist ...; python_version >= '3.12'` marker; `_NATIVE_AVAILABLE` guard; `test_native_fallback.py` |
+| Package/lock validity | `uv lock`, `uv lock --check` pass |
+| Full regression | full `src/tests` incl. notebooks: 416 passed, 1 xfailed |
+
+## Remaining work / decision needed
+
+The one explicit requirement not fully met is retiring the legacy path: it is
+retained as the no-kfnetlist fallback. This is blocked by kfnetlist 0.3.0's
+`Requires-Python >= 3.12` (no 3.11 wheels) combined with the requirement to
+preserve Python 3.11 support. Resolving it needs either (a) kfnetlist 3.11
+wheels, or (b) authorization to raise SAX's minimum Python to 3.12. Native
+rename/pruning transforms are also not yet migrated; circuit construction does
+not use the legacy transforms.

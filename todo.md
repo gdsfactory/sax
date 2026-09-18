@@ -48,12 +48,14 @@ Each numbered slice should have focused tests and its own reviewable commit
 (or closely related commits). No suffix stripping and no automatic full flattening.
 Run smoke after each slice; update baseline specs only as behavior is implemented.
 
-**Progress:** circuit construction now runs entirely on native kfnetlist objects
-for both legacy and native input (slices 1–5, 7 core). Legacy `sax.Netlist`
-dictionaries and `.pic.yml` are adapted into native first. Directed legacy
-connections are preserved for the `forward` backend; native input without
-direction errors there. Remaining: native topology transforms (`netlists.py`)
-and removing the legacy TypedDict input types.
+**Progress:** circuit construction runs on native kfnetlist objects when kfnetlist
+is available for both legacy and native input (slices 1–5, 7 core). Legacy
+`sax.Netlist` dictionaries and `.pic.yml` are adapted into native first. Directed
+legacy connections are preserved for the `forward` backend; native input without
+direction errors there. kfnetlist is declared with a `python_version >= '3.12'`
+marker and the native import is guarded, so Python 3.11 / minimal installs fall
+back to the legacy path. Remaining: native rename/pruning transforms, and
+retiring the legacy fallback once kfnetlist supports 3.11 or SAX drops it.
 
 ### 1. Agree the identity and compatibility boundary
 
@@ -163,20 +165,17 @@ and removing the legacy TypedDict input types.
 ### 7. Switch the internal default and verify compatibility
 
 - [x] Route circuit construction through the canonical native boundary: both
-  legacy input and native input build through `_circuit_native`. `get_required_
-  circuit_models` uses the same native resolver. Directed legacy connections are
-  preserved via `legacy_orientation`; native input without direction raises for
-  the `forward` backend rather than guessing.
-- [ ] Retire the legacy TypedDict input types and `netlists.py` transforms once
-  native equivalents cover rename/flatten/pruning. Native flatten now exists
-  (`native.flatten_netlist`, `flatten_recursive_netlist`); legacy transforms remain
-  as public compatibility utilities and are not used by circuit construction.
-- [ ] Add the approved dependency/version policy, deliberately update the lockfile,
-  and run `uv lock --check` plus isolated installation/import tests on supported
-  Python/OS combinations. Keep layout extraction dependencies out of core imports.
-- [ ] Run focused identity/YAML/parser/transform/backend suites, smoke (<10s locally),
-  and full `src/tests` including notebooks. Compare KLU/FG results, broadcasting,
-  JIT, and real-objective gradients across equivalent input formats.
+  legacy input and native input build through `_circuit_native` when kfnetlist is
+  available. `get_required_circuit_models` uses the same native resolver. Directed
+  legacy connections are preserved via `legacy_orientation`; native input without
+  direction raises for the `forward` backend rather than guessing.
+- [x] Guard the native import and declare `kfnetlist` with a relevant Python
+  marker; add `src/tests/test_native_fallback.py` proving the legacy fallback.
+- [ ] Drop the legacy fallback / retire the TypedDict input types once kfnetlist
+  ships Python 3.11 wheels or SAX's minimum version is explicitly raised.
+- [x] Regenerate the lockfile deliberately; `uv lock` and `uv lock --check` pass.
+- [x] Run the full `src/tests` suite including notebooks: **416 passed, 1 xfailed**
+  in 29.89s; `just smoke`: **6 passed**, 5.65s wall. Cross-platform installs not rerun.
 - [ ] Update baseline specs, user docs, migration examples, and deprecation notes
   only for implemented behavior. Explain exact model aliases for old ambiguous
   exports and preferred identity-preserving extraction for new designs.
