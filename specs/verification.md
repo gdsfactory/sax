@@ -23,6 +23,15 @@ The pytest run emitted a Hypothesis collection warning about the configured
 An ignored `.venv` was created. The notebook kernel was installed under a temporary
 prefix rather than replacing the user's global `sax` kernel.
 
+## Fast checks during TODO remediation
+
+Run `just smoke` (or `.venv/bin/python -m pytest src/tests/test_smoke.py -q`) in the
+installed environment. Four tests cover asymmetric representation conversion,
+KLU/FG settings/JIT/gradients, and zero-length optical transmission. Initial measured
+wall-clock time: **7.13 seconds** including startup (pytest: 5.58 seconds). The
+under-10-second target is local, not a guarantee on every machine or cold install.
+No kernel setup or dependency synchronization occurs in this command.
+
 ## Reproduce targeted tests
 
 Preferred environment setup respects the checked-in metadata and lockfile:

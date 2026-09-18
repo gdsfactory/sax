@@ -17,6 +17,10 @@ uv:
 ipykernel:
   uv run --dev python -m ipykernel install --user --name sax --display-name sax
 
+# Fast checks in the already-installed environment (no dependency synchronization).
+smoke:
+  uv run --no-sync pytest src/tests/test_smoke.py -q
+
 test: ipykernel
   uv run --dev pytest -s -n logical
 
