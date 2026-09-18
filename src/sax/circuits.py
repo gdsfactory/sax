@@ -173,73 +173,42 @@ def circuit(
     """
     _backend = sax.into[sax.Backend](backend)
 
-    if native.is_native(netlist) or native.is_native_hierarchy(netlist) or _is_native_json(netlist):
-        return _circuit_native(
-            netlist,
-            models,
-            backend=_backend,
-            return_type=return_type,
-            top_level_name=top_level_name,
-            ignore_impossible_connections=ignore_impossible_connections,
-            probes=probes,
-            on_internal_port=on_internal_port,
-        )
+    if _is_native_json(netlist):
+        netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
 
     instance_models = _extract_instance_models(netlist)
-    recnet = into_recnet(
-        netlist,
-        top_level_name=top_level_name,
-    )
-    patch_netlist_array_instances(recnet)
-    recnet = sax.into[sax.RecursiveNetlist](recnet)
-    recnet, auto_probes = extract_port_probes(recnet, on_internal_port)
-    if auto_probes:
-        probes = {**(probes or {}), **auto_probes}
-    if probes:
-        recnet = expand_probes(recnet, probes)
-        models = {"_ideal_probe": ideal_probe, **(models or {})}
-    recnet = resolve_array_instances(recnet)
-    recnet = _filter_portless_subnets(recnet)
-    recnet = remove_unused_instances(recnet)
-    _validate_netlist_ports(recnet)
-    dependency_dag = _create_dag(recnet, models, validate=True)
-    models = _validate_models(
-        models or {}, dependency_dag, extra_models=instance_models
-    )
-
-    circuit = None
-    new_models = {}
-    current_models = {}
-    model_names = list(nx.topological_sort(dependency_dag))[::-1]
-    for model_name in model_names:
-        if model_name in models:
-            new_models[model_name] = models[model_name]
-            continue
-
-        flatnet = recnet[model_name]
-        current_models |= new_models
-        new_models = {}
-
-        current_models[model_name] = circuit = _flat_circuit(
-            flatnet["instances"],
-            flatnet.get("connections", {}),
-            flatnet.get("nets", []),
-            flatnet.get("ports", {}),
-            flatnet.get("placements", {}),
-            current_models,
-            _backend,
-            ignore_impossible_connections=ignore_impossible_connections,
-        )
-
-    if circuit is None:
-        msg = "Could not construct circuit (unknown reason)"
-        raise RuntimeError(msg)
-    circuit = _enforce_return_type(circuit, return_type)
-    return circuit, sax.CircuitInfo(
-        dag=dependency_dag,
-        models=current_models,
+    prepared = _replace_callable_instances(netlist)
+    merged_models: sax.Models = {**(models or {}), **instance_models}
+    return _circuit_native(
+        prepared,
+        merged_models,
         backend=_backend,
+        return_type=return_type,
+        top_level_name=top_level_name,
+        ignore_impossible_connections=ignore_impossible_connections,
+        probes=probes,
+        on_internal_port=on_internal_port,
     )
+
+
+def _replace_callable_instances(netlist: Any) -> Any:  # noqa: ANN401
+    """Replace callable/partial instances with their component name strings."""
+    if isinstance(netlist, dict):
+        if "instances" in netlist:
+            out = dict(netlist)
+            replaced = {}
+            for name, inst in netlist["instances"].items():
+                if callable(inst) and not isinstance(inst, str):
+                    f = inst
+                    while isinstance(f, partial):
+                        f = f.func
+                    replaced[name] = f.__name__
+                else:
+                    replaced[name] = inst
+            out["instances"] = replaced
+            return out
+        return {k: _replace_callable_instances(v) for k, v in netlist.items()}
+    return netlist
 
 
 def _is_native_json(netlist: object) -> bool:
@@ -284,11 +253,27 @@ def _circuit_native(
     probes: dict[str, str] | None,
     on_internal_port: Literal["warn", "ignore", "as_probes"],
 ) -> tuple[sax.Model, sax.CircuitInfo]:
-    cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
+    cells, root, orientations = native.to_hierarchy(
+        netlist, top_level_name=top_level_name
+    )
 
     models = dict(models or {})
     dependency_dag = _native_dag(cells, root, models)
     models = _validate_models(models, dependency_dag)
+
+    if backend == "forward" and not orientations:
+        internal = [
+            name
+            for name, nl in cells.items()
+            if nl.nets and name in cells
+        ]
+        if internal:
+            msg = (
+                "The forward backend needs directed connections, but native "
+                "kfnetlist nets are undirected and this input carries no "
+                "orientation. Legacy dictionaries/`.pic.yml` retain direction."
+            )
+            raise ValueError(msg)
 
     top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
         cells, root, models, probes or {}
@@ -326,7 +311,9 @@ def _circuit_native(
         current_models |= new_models
         new_models = {}
         nl = cells[model_name]
-        instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
+        instances, nets, ports, bindings = native.lower_bindings(
+            nl, models, cells, orientations.get(model_name)
+        )
         for name, inst in instances.items():
             key = bindings.get(name)
             if key is None:
@@ -483,21 +470,11 @@ def get_required_circuit_models(
         ```
     """
     instance_models = _extract_instance_models(netlist)
-    if native.is_native(netlist) or native.is_native_hierarchy(netlist):
-        cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
-        dependency_dag = _native_dag(cells, root, dict(models or {}))
-        _, required, _ = _find_missing_models(models, dependency_dag)
-        return required
-    recnet = into_recnet(
-        netlist,
-    )
-    recnet = remove_unused_instances(recnet)
-    dependency_dag = _create_dag(recnet, models, validate=True)
-    _, required, _ = _find_missing_models(
-        models,
-        dependency_dag,
-        extra_models=instance_models,
-    )
+    prepared = _replace_callable_instances(netlist)
+    cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
+    merged: sax.Models = {**(models or {}), **instance_models}
+    dependency_dag = _native_dag(cells, root, merged)
+    _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
 
 

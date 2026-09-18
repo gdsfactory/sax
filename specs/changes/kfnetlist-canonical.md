@@ -1,44 +1,40 @@
 # Canonical kfnetlist topology and unambiguous model identity
 
-**Status: partially implemented.** SAX now accepts native ``Netlist`` /
-``PlacedNetlist`` hierarchies directly, resolves factory models across
-parameterizations, and keeps distinct instantiated cells for fallback (issue
-#120). Legacy dictionaries and ``.pic.yml`` still use the existing circuit path;
-retiring that path is blocked on a directed-connection representation (below).
-SAX inspected at `e23d710`; local kfnetlist at
-`7379b68cbed3a7fe01bc11505d789fb53bae6cb9`. Implementation checklist:
-[`todo.md`](../../todo.md). Existing contracts remain in
+**Status: implemented for circuit construction.** SAX adapts legacy dictionaries
+and ``.pic.yml`` into native kfnetlist objects and builds every circuit through a
+single native path (`src/sax/native.py`, `_circuit_native`). Native ``Netlist``
+/ ``PlacedNetlist`` hierarchies are accepted directly; factory ``component``
+models are resolved before descending into a distinct ``PlacedInstance.cell``
+(issue #120). Directed legacy ``connections`` are preserved as orientation hints
+so the ``forward`` backend still sees declared signal direction; native input
+without direction errors for that backend. SAX inspected at `e23d710`; local
+kfnetlist at `7379b68cbed3a7fe01bc11505d789fb53bae6cb9`. Implementation
+checklist: [`todo.md`](../../todo.md). Existing contracts remain in
 [circuits](../circuits.md) and [data workflows](../data-workflows.md).
 
 ## Implementation status (this checkout)
 
 | Surface | State |
 | --- | --- |
-| Native ``Netlist``/``PlacedNetlist`` input to ``sax.circuit`` | Implemented (`src/sax/native.py`, `_circuit_native`) |
-| Factory-vs-cell resolution and distinct-cell fallback (#120) | Implemented; tested in `test_native_kfnetlist.py` and smoke |
-| ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`) | Implemented for flat and ``modules``/``toplevel`` documents |
-| Legacy flat/recursive dict → native adapter | Implemented (`from_legacy_flat`, `to_hierarchy`) |
-| Probes and internal-port policy on native input | Implemented at lowering time |
-| Legacy dict/``.pic.yml`` circuit construction through native | **Blocked** (directed connections; see below) |
+| Native ``Netlist``/``PlacedNetlist`` input to ``sax.circuit`` | Implemented |
+| Legacy dict / ``.pic.yml`` → native adapter, then native build | Implemented |
+| Factory-vs-cell resolution and distinct-cell fallback (#120) | Implemented; tested |
+| Probes and internal-port policy | Implemented at lowering time |
+| ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
+| Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
+| Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and by legacy utility transforms; no longer used for circuit construction |
 | Native topology transforms (`netlists.py`) | Not migrated; legacy transforms still operate on dictionaries |
-| Old internal TypedDict/Pydantic schema retirement | Not done (parallel path remains) |
 
-### Blocker: directed connections versus undirected nets
+### Directed connections versus undirected nets
 
-kfnetlist ``Net`` is an unordered set of members; ``create_net``/``Net([...])``
-sort members (observed with installed 0.3.0). SAX's legacy ``connections``
-mapping is directed and the ``forward`` backend encodes signal direction as the
-edge orientation in ``_nets_to_connections_strict``. A native ``Net`` therefore
-cannot reproduce the declared orientation, and switching the forward backend to
-undirected nets changes results or raises ``KeyError``. The installed kfnetlist
-0.3.0 has no directed ``Module.connections`` type; the local checkout's
-``kfnetlist_schema.Module`` has one but is not in the released package. Resolving
-this needs either (a) a released kfnetlist directed-connection/module type used
-as the native cell representation, or (b) an intentional forward-backend change
-that derives direction topologically. Until then, circuit construction keeps the
-legacy path for legacy input; only native input uses the native builder. The
-blocker is recorded by a strict xfail
-(`test_native_forward_backend_direction_blocker`).
+kfnetlist ``Net`` is unordered (``create_net``/``Net([...])`` sort members).
+SAX's legacy ``connections`` mapping is directed and the ``forward`` backend
+encodes signal direction as edge orientation. The legacy adapter therefore keeps
+``legacy_orientation`` hints and ``lower`` applies them so declared direction is
+preserved. Native input without hints cannot express direction, so ``sax.circuit``
+raises a clear ``ValueError`` for the ``forward`` backend instead of silently
+using arbitrary orientation (`test_native_forward_backend_direction_blocker`).
+A released kfnetlist directed-connection/module type would remove the hint.
 
 
 ## Required architecture

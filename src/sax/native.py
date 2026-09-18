@@ -186,19 +186,38 @@ def _looks_native(data: Mapping[str, Any]) -> bool:
     )
 
 
+def legacy_orientation(flat: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Directed endpoint pairs declared by a legacy flat netlist.
+
+    kfnetlist nets are undirected; this preserves the signal direction that the
+    legacy ``connections``/``nets`` encoding carried so directed backends (the
+    ``forward`` backend) remain correct.
+    """
+    pairs: list[tuple[str, str]] = []
+    for src, tgt in (flat.get("connections") or {}).items():
+        pairs.append((str(src), str(tgt)))
+    for net in flat.get("nets") or []:
+        pairs.append((str(net["p1"]), str(net["p2"])))
+    return pairs
+
+
 def to_hierarchy(
     netlist: object,
     *,
     top_level_name: str = "top_level",
-) -> tuple[NativeHierarchy, str]:
-    """Normalize supported input into ``(native cells, root name)``."""
+) -> tuple[NativeHierarchy, str, dict[str, list[tuple[str, str]]]]:
+    """Normalize supported input into ``(cells, root, orientations)``.
+
+    ``orientations`` records directed endpoint pairs that native unordered nets
+    cannot represent; it is populated only for legacy/dict input.
+    """
     if is_native(netlist):
-        return {top_level_name: netlist}, top_level_name
+        return {top_level_name: netlist}, top_level_name, {}
 
     if is_native_hierarchy(netlist):
         cells = dict(netlist)
         root = top_level_name if top_level_name in cells else next(iter(cells))
-        return cells, root
+        return cells, root, {}
 
     if isinstance(netlist, str):
         try:
@@ -212,22 +231,29 @@ def to_hierarchy(
         data = dict(netlist)
         if "instances" in data:
             if _looks_native(data):
-                return {top_level_name: Netlist.from_dict(data)}, top_level_name
-            return {top_level_name: from_legacy_flat(data)}, top_level_name
+                return {top_level_name: Netlist.from_dict(data)}, top_level_name, {}
+            return (
+                {top_level_name: from_legacy_flat(data)},
+                top_level_name,
+                {top_level_name: legacy_orientation(data)},
+            )
 
         cells: NativeHierarchy = {}
+        orientations: dict[str, list[tuple[str, str]]] = {}
         for name, flat in data.items():
+            key = str(name)
             if isinstance(flat, Netlist):
-                cells[str(name)] = flat
+                cells[key] = flat
             elif isinstance(flat, Mapping) and _looks_native(flat):
-                cells[str(name)] = Netlist.from_dict(dict(flat))
+                cells[key] = Netlist.from_dict(dict(flat))
             elif isinstance(flat, Mapping):
-                cells[str(name)] = from_legacy_flat(flat)
+                cells[key] = from_legacy_flat(flat)
+                orientations[key] = legacy_orientation(flat)
             else:
                 msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
                 raise TypeError(msg)
         root = top_level_name if top_level_name in cells else next(iter(cells))
-        return cells, root
+        return cells, root, orientations
 
     msg = f"Cannot interpret {type(netlist)} as a netlist."
     raise TypeError(msg)
@@ -246,13 +272,20 @@ def _expanded_name(name: str, i: int, j: int, na: int, nb: int) -> str:
 
 def lower(
     nl: Netlist,
+    orientation: list[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str]]:
     """Lower a native netlist to ``(instances, nets, ports)`` tables.
 
     These flat tables are the compiled input to the numerical backends, not a
     canonical netlist representation. Array instances are expanded to
     ``name<column.row>`` entries (zero-based), matching SAX instance naming.
+
+    ``orientation`` supplies directed endpoint pairs for nets whose direction
+    native unordered nets cannot carry (used by the ``forward`` backend).
     """
+    directed: dict[frozenset[str], tuple[str, str]] = {
+        frozenset((a, b)): (a, b) for a, b in (orientation or [])
+    }
     instances: dict[str, dict[str, Any]] = {}
     array_sizes: dict[str, tuple[int, int]] = {}
     for name, inst in nl.instances.items():
@@ -297,7 +330,11 @@ def lower(
             if external.name in declared and endpoints:
                 ports[external.name] = endpoints[0]
         for a, b in zip(endpoints, endpoints[1:]):
-            nets.append({"p1": a, "p2": b})
+            hint = directed.get(frozenset((a, b)))
+            if hint is not None:
+                nets.append({"p1": hint[0], "p2": hint[1]})
+            else:
+                nets.append({"p1": a, "p2": b})
     return instances, nets, ports
 
 
@@ -334,9 +371,10 @@ def lower_bindings(
     nl: Netlist,
     models: Mapping[str, Any],
     cells: Mapping[str, Any],
+    orientation: list[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str], dict[str, str | None]]:
     """Lower *nl* and resolve every expanded instance to a model/cell key."""
-    instances, nets, ports = lower(nl)
+    instances, nets, ports = lower(nl, orientation)
     bindings: dict[str, str | None] = {}
     for name, inst in nl.instances.items():
         arr = inst.array

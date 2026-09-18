@@ -43,17 +43,19 @@ the user's instruction used `-n`.
 ## Netlist identity investigation
 
 The native kfnetlist path adds `src/sax/native.py`, `_circuit_native`, and
-`src/tests/test_native_kfnetlist.py`. Non-notebook suite after the change:
-**397 passed** (includes the new native tests). `just smoke`: **6 passed**,
-3.23s pytest / ~4.5s wall-clock, existing environment. Native input supports
-factory model substitution, distinct-cell fallback, cell-specific overrides,
-missing-model diagnostics, JSON, legacy adaptation, arrays, flat/hierarchical
-probes, internal-port policy, settings, JIT, and gradients. The forward-backend
-directed-connection blocker is recorded by a strict xfail; it is not a pass.
-Full `src/tests` including notebooks, `uv lock --check`, and cross-platform
-installs were not rerun for this slice. See the
-[investigation](changes/kfnetlist-canonical.md) for live extraction evidence,
-version distinctions, and the blocker.
+`src/tests/test_native_kfnetlist.py`. Circuit construction now runs entirely on
+native kfnetlist objects; legacy dictionaries and `.pic.yml` are adapted into
+native first, and `get_required_circuit_models` uses the native resolver.
+Non-notebook suite: **406 passed, 1 xfailed** (native tests plus all legacy
+suites). `just smoke`: **6 passed**, ~4.4s wall-clock, existing environment.
+Native input supports factory model substitution, distinct-cell fallback,
+cell-specific overrides, missing-model diagnostics, JSON, legacy adaptation,
+arrays, flat/hierarchical probes, internal-port policy, settings, JIT, and
+gradients. The one xfail records that native input without direction cannot feed
+the `forward` backend; legacy direction is preserved and legacy forward tests
+pass. Full `src/tests` including notebooks, `uv lock --check`, and
+cross-platform installs were not rerun for this slice. See the
+[investigation](changes/kfnetlist-canonical.md).
 
 ## Fast checks during TODO remediation
 

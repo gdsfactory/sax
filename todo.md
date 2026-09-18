@@ -48,10 +48,12 @@ Each numbered slice should have focused tests and its own reviewable commit
 (or closely related commits). No suffix stripping and no automatic full flattening.
 Run smoke after each slice; update baseline specs only as behavior is implemented.
 
-**Progress:** slices 1–3 partially implemented (native module, factory/cell
-resolution, PIC loader, native probes). Slice 7 cannot complete until the
-directed-connection blocker is resolved (see change doc). Legacy input still uses
-the legacy circuit path; native input uses the native builder.
+**Progress:** circuit construction now runs entirely on native kfnetlist objects
+for both legacy and native input (slices 1–5, 7 core). Legacy `sax.Netlist`
+dictionaries and `.pic.yml` are adapted into native first. Directed legacy
+connections are preserved for the `forward` backend; native input without
+direction errors there. Remaining: native topology transforms (`netlists.py`)
+and removing the legacy TypedDict input types.
 
 ### 1. Agree the identity and compatibility boundary
 
@@ -160,20 +162,14 @@ the legacy circuit path; native input uses the native builder.
 
 ### 7. Switch the internal default and verify compatibility
 
-**Blocked** on directed-connection parity: kfnetlist `Net` is undirected, so the
-forward backend cannot recover declared signal direction from native nets. Per the
-stop condition, the canonical switch is not made. Legacy input keeps the legacy
-path; native input uses the native builder. See the change doc and
-`test_native_forward_backend_direction_blocker`.
-
-- [ ] Complete the native circuit path and retire the old internal netlist schema.
-  Keep supported legacy input adapters pointing into kfnetlist, not a parallel
-  legacy simulation path. Document public loader/parser/type changes and isolate
-  any explicitly retained compatibility wrappers.
-- [ ] Add an architectural regression: native circuit construction must succeed
-  with the old kfnetlist-to-SAX adapter disabled. Assert that `.pic.yml` loading
-  and topology transforms return native types and that no legacy schema coercion
-  is used between native input and numerical backend lowering.
+- [x] Route circuit construction through the canonical native boundary: both
+  legacy input and native input build through `_circuit_native`. `get_required_
+  circuit_models` uses the same native resolver. Directed legacy connections are
+  preserved via `legacy_orientation`; native input without direction raises for
+  the `forward` backend rather than guessing.
+- [ ] Retire the legacy TypedDict input types and `netlists.py` transforms once
+  native equivalents cover rename/flatten/pruning. They are currently retained
+  as public input/utility APIs but are not used by circuit construction.
 - [ ] Add the approved dependency/version policy, deliberately update the lockfile,
   and run `uv lock --check` plus isolated installation/import tests on supported
   Python/OS combinations. Keep layout extraction dependencies out of core imports.

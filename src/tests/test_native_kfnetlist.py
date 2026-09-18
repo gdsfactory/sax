@@ -410,3 +410,60 @@ def test_load_native_recursive_netlist(tmp_path) -> None:
         cells, {"wg": lambda v=1.0: _leaf(v)}, top_level_name=root
     )
     assert ("in0", "out0") in model()
+
+
+# ---------------------------------------------------------------------------
+# Architectural: circuit construction bypasses the old SAX netlist schema
+# ---------------------------------------------------------------------------
+
+
+def test_circuit_bypasses_legacy_kfnetlist_adapter(monkeypatch) -> None:
+    """`circuit` must not call the kfnetlist→SAX-dictionary adapter."""
+    import sax.parsers.kfnetlist as kfparser
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("legacy kfnetlist adapter was called")
+
+    monkeypatch.setattr(kfparser, "_convert_flat", _boom)
+    monkeypatch.setattr(kfparser, "parse_kfnetlist", _boom)
+
+    flat = {
+        "instances": {"a": {"component": "wg", "settings": {"v": 2.0}}, "b": "wg"},
+        "connections": {"a,out0": "b,in0"},
+        "ports": {"in0": "a,in0", "out0": "b,out0"},
+    }
+    model, _ = sax.circuit(flat, {"wg": lambda v=1.0: _leaf(v)})
+    np.testing.assert_allclose(complex(model()["in0", "out0"]), 2.0)
+
+    nl = _two_leaves()
+    native_model, _ = sax.circuit(nl, {"wg": lambda v=1.0: _leaf(v)})
+    np.testing.assert_allclose(complex(native_model()["in0", "out0"]), 6.0)
+
+
+def test_circuit_does_not_use_legacy_recursive_netlist_helper(monkeypatch) -> None:
+    import sax.netlists as netlists
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("legacy recursive-netlist normalization was used")
+
+    monkeypatch.setattr(netlists, "netlist", _boom)
+    monkeypatch.setattr(netlists, "remove_unused_instances", _boom)
+    flat = {
+        "instances": {"a": "wg"},
+        "connections": {},
+        "ports": {"in0": "a,in0", "out0": "a,out0"},
+    }
+    model, _ = sax.circuit(flat, {"wg": lambda v=1.0: _leaf(v)})
+    assert ("in0", "out0") in model()
+
+
+def test_public_pic_loaders_produce_native() -> None:
+    doc = (
+        "instances:\n"
+        "  a:\n    component: wg\n"
+        "ports:\n  in0: a,in0\n  out0: a,out0\n"
+    )
+    cells, root = native.load_pic_yaml(doc)
+    assert isinstance(cells[root], Netlist)
+    nl = native.load_native_netlist(doc)
+    assert isinstance(nl, Netlist)
