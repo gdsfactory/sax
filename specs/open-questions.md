@@ -8,7 +8,7 @@ separately from runtime reproduction. Do not infer an exhaustive bug audit.
 
 | Observation | Evidence | Next check |
 | --- | --- | --- |
-| Dense `multimode(..., modes=("X",))` produces TE/TM while dictionary input produces X | **Reproduced**; [`multimode.py`](../src/sax/multimode.py), dense dispatch omits `modes` | Agree that custom modes apply uniformly; test all three formats |
+| **Resolved:** custom modes now apply to dense as well as dictionary/COO values and wrappers | `test_custom_modes.py` | All formats tested for custom-mode replication and extraction |
 | `get_modes` repeats mode names per port despite documenting uniqueness | **Reproduced**; [`s.py`](../src/sax/s.py), `get_modes` | Decide unique ordering and test multiple ports |
 | Duplicate COO coordinates sum in dense conversion but overwrite in dictionary conversion | **Reproduced**; `s.py`, `_scoo_to_sdense` / `_scoo_to_sdict` | Decide whether duplicates are invalid or require consistent reduction |
 | `phase_shifter.loss` is multiplied by length, unlike its lumped-loss description | **Inspected**; [`models/straight.py`](../src/sax/models/straight.py) | Establish units and backward-compatibility policy before changing formula |
@@ -18,7 +18,7 @@ Reproduction seeds for the first two observations:
 
 ```python
 s = {("in0", "out0"): 1.0}
-sax.get_ports(sax.multimode(sax.sdense(s), modes=("X",)))  # currently TE/TM
+sax.get_ports(sax.multimode(sax.sdense(s), modes=("X",)))  # now X (previously TE/TM)
 sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 ```
 

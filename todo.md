@@ -42,9 +42,10 @@ Reader/writer directions are tested independently; related input fixes share a c
 
 ## Other correctness and API issues
 
-- [ ] **Honor custom modes in dense multimode conversion.** Reproduced:
+- [x] **Honor custom modes in dense multimode conversion.** Reproduced:
   `multimode(sdense, modes=("X",))` produces TE/TM instead of X. Verify custom
   modes across all three representations. Source: `src/sax/multimode.py`.
+  Fixed dispatch; `test_custom_modes.py` plus smoke: **16 passed**.
 - [ ] **Resolve duplicate-COO conversion semantics.** Reproduced: conversion to
   dense sums duplicate coordinates, while conversion to dictionary keeps the last
   value. Decide whether to reject duplicates or reduce them consistently; add

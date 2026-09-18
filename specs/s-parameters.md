@@ -57,13 +57,14 @@ Dense single-mode extraction consolidates the matrix. COO single-mode extraction
 only filters/renames the port map: it does not compact indices or values. Convert
 with care, especially when selecting a non-first mode.
 
-Two current discrepancies are not desired guarantees: dense `multimode` ignores a
-custom `modes` argument, and `get_modes` returns a mode for each port rather than
-unique modes. See [open questions](open-questions.md).
+Custom `modes` are honored for all three representations and model wrappers;
+`test_custom_modes.py` covers replication, extraction, and absent cross-mode coupling.
+`get_modes` currently returns a mode for each port rather than unique modes;
+see [open questions](open-questions.md).
 
 Evidence: [`multimode.py`](../src/sax/multimode.py), `get_modes` in `s.py`.
 Tests: [`02_multimode.ipynb`](../src/tests/nbs/02_multimode.ipynb) covers default-mode
-replication and selected conversion cases, not all custom-mode/subset cases.
+replication and selected conversion cases; custom modes additionally have pytest coverage.
 
 ## Naming and validation
 
