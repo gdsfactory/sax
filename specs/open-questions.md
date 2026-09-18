@@ -27,7 +27,7 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 | Observation | Evidence | Next check |
 | --- | --- | --- |
 | Advertised no-klujax fallback is preceded by an unconditional KLU module import | **Inspected**; [`backends/__init__.py`](../src/sax/backends/__init__.py), [`klu.py`](../src/sax/backends/klu.py) | Decide whether KLU is genuinely optional; test isolated imports if so |
-| DAG validation uses `is_directed()`, not an acyclicity check | **Inspected**; [`circuits.py`](../src/sax/circuits.py), `_validate_dag` | Cycles may instead fail at root validation/topological sort; define stable diagnostics |
+| **Resolved:** explicit DAG acyclicity validation produces a dependency-cycle diagnostic | `test_hierarchy_validation.py` | Self/multi-component cycles rejected; optical feedback still works |
 | **Resolved:** flattening and renaming now rewrite `nets` and preserve net metadata | `test_netlist_transforms.py`: KLU/FG equivalence, metadata, repeated endpoints, input isolation | Legacy `~` flattened names still require a valid identifier separator such as `__` for circuit construction |
 | Unconnected probes actually insert the four-port model and expose both taps, contrary to the alias-only docstring | **Inspected and covered by passing tests**; `expand_probes`, `test_probe_on_truly_unconnected_port` in [`test_probes.py`](../src/tests/test_probes.py) | Likely documentation correction; preserve tested behavior unless deliberately changed |
 | **Resolved:** recursive YAML loading uses a suffix wildcard and deterministic ordering, preserving the root first | `test_recursive_yaml.py` | Default/custom suffixes, nested files, ignored nonmatches, and duplicate-name rejection tested |

@@ -637,15 +637,15 @@ def _is_recursive_netlist(netlist: sax.AnyNetlist) -> bool:
 
 
 def _validate_dag(dag: nx.DiGraph) -> nx.DiGraph:
+    if not nx.is_directed_acyclic_graph(dag):
+        msg = "Netlist dependency cycles detected!"
+        raise ValueError(msg)
     nodes = _find_root(dag)
     if len(nodes) > 1:
         msg = f"Multiple top_levels found in netlist: {nodes}"
         raise ValueError(msg)
     if len(nodes) < 1:
         msg = "Netlist does not contain any nodes."
-        raise ValueError(msg)
-    if not dag.is_directed():
-        msg = "Netlist dependency cycles detected!"
         raise ValueError(msg)
     return dag
 

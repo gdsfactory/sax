@@ -47,7 +47,9 @@ patches arrays, handles internal ports, expands probes, resolves arrays, filters
 portless sub-netlists, and prunes instances disconnected from external ports.
 Dependencies are constructed leaf-first; an explicitly supplied model can stand
 in for a subcircuit. Missing leaf models raise `ValueError` with model diagnostics.
-Hierarchy must be acyclic even when optical wiring has feedback.
+Hierarchy must be acyclic even when optical wiring has feedback. Explicit
+acyclicity validation raises `ValueError` for recursive component definitions;
+`test_hierarchy_validation.py` distinguishes these from valid optical feedback.
 
 Array instances expand to `name<column.row>`. References can infer/patch array
 extents. Evaluation uses the base name's settings for every element; this is not
