@@ -146,7 +146,9 @@ def phase_shifter(
             linearly proportional to voltage with a coefficient of π rad/V.
             Positive voltage increases the phase. Defaults to 0 V.
         length: The length of the phase shifter in micrometers.
-        loss: Additional loss in dB introduced by the active region.
+        loss: Propagation loss in dB per micrometer. Total attenuation is
+            ``loss * length`` dB. This preserves the historical numerical
+            convention; for a lumped loss use ``attenuator(loss=...)``.
 
     Returns:
         S-matrix dictionary containing the complex-valued transmission coefficient.

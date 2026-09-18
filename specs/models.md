@@ -39,8 +39,10 @@ Representative contracts:
 - `coupler`: dispersive coupling angle with cosine through amplitude and negative
   sine quadrature cross amplitude. Its `coupling0` is not interchangeable with the
   ideal model's power-coupling parameter.
-- `phase_shifter`: adds `pi*voltage` to propagation phase; its implemented loss
-  multiplies `loss*length`, despite documentation suggesting a lumped loss.
+- `phase_shifter`: adds `pi*voltage` to propagation phase; `loss` is dB per
+  micrometer, giving total loss `loss*length`. Historical numerical behavior is
+  retained; `attenuator` is the separate lumped-loss model.
+  `test_phase_shifter.py` verifies length scaling, voltage phase, and gradients.
 - `ideal_probe` copies signals for measurement and is explicitly nonunitary.
 - `isolator` and `circulator` provide directional/nonreciprocal behavior and use
   fixed `o*` names rather than the global `PortNamer` convention.

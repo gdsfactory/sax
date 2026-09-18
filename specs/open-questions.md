@@ -11,7 +11,7 @@ separately from runtime reproduction. Do not infer an exhaustive bug audit.
 | **Resolved:** custom modes now apply to dense as well as dictionary/COO values and wrappers | `test_custom_modes.py` | All formats tested for custom-mode replication and extraction |
 | `get_modes` repeats mode names per port despite documenting uniqueness | **Reproduced**; [`s.py`](../src/sax/s.py), `get_modes` | Decide unique ordering and test multiple ports |
 | **Resolved:** duplicate COO coordinates sum in both dictionary and dense conversion | `test_sparse_duplicates.py` | Batch, cancellation, round-trip, JIT, and gradient checks |
-| `phase_shifter.loss` is multiplied by length, unlike its lumped-loss description | **Inspected**; [`models/straight.py`](../src/sax/models/straight.py) | Establish units and backward-compatibility policy before changing formula |
+| **Resolved:** `phase_shifter.loss` documented as dB/µm, retaining its historical formula | `test_phase_shifter.py` | Length scaling, zero-length limit, voltage phase, and gradient checked |
 | **Resolved:** constant feature/target columns use unit normalization scale | `test_fit_degenerate.py` | Finite fits, prediction index preservation, and symbolic export equivalence tested |
 
 Reproduction seeds for the first two observations:

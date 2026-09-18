@@ -73,10 +73,11 @@ Reader/writer directions are tested independently; related input fixes share a c
   is `rglob(".pic.yml")`, not `rglob("*.pic.yml")`. Add a multi-file fixture and
   verify intended naming/discovery rules. Source: `src/sax/utils.py`.
   Suffix glob, sorted children, duplicate-name rejection; YAML/smoke: **7 passed**.
-- [ ] **Resolve phase-shifter loss units.** Inspected: attenuation uses
+- [x] **Resolve phase-shifter loss units.** Inspected: attenuation uses
   `loss * length`, but documentation suggests lumped loss. Establish intended
   units and compatibility policy, then align formula, docs, and tests.
-  Source: `src/sax/models/straight.py`.
+  Source: `src/sax/models/straight.py`. Preserve historical dB/µm formula;
+  corrected API docs and specs. Phase-shifter tests plus smoke: **8 passed**.
 
 ## Validation and maintainability
 
