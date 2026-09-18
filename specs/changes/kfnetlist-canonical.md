@@ -22,7 +22,7 @@ checklist: [`todo.md`](../../todo.md). Existing contracts remain in
 | Probes and internal-port policy | Implemented at lowering time |
 | ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
 | Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
-| Native flatten transforms (`flatten_netlist`, `flatten_recursive_netlist`) | Implemented using kfnetlist's `flatten_netlists` |
+| Native flatten/rename/prune transforms | `native.flatten_netlist`, `flatten_recursive_netlist`, `rename_instances`, `rename_models`, `remove_unused_instances`; public transforms dispatch to them for native input |
 | Legacy fallback when kfnetlist is unavailable (Python 3.11 / minimal install) | Implemented; `_NATIVE_AVAILABLE` guard |
 | Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and used by the no-kfnetlist fallback; not used for native circuit construction |
 | Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained as public compatibility utilities and fallback |
@@ -350,11 +350,11 @@ suite including notebooks before declaring the migration implemented.
 | No suffix guessing / no blanket flatten | No such code; `test_legacy_counted_names_remain_ambiguous` documents the ambiguity |
 | Model overrides, missing-model diagnostics | `test_cell_specific_override_beats_factory_model`, `test_missing_model_reports_factory_and_cell` |
 | Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
-| PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist` |
+| PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
 | Directed `forward` semantics preserved | `legacy_orientation` + `lower(orientation=...)`; legacy forward tests pass; `test_native_forward_backend_direction_blocker` xfail documents the native limitation |
 | Python compatibility preserved | `kfnetlist ...; python_version >= '3.12'` marker; `_NATIVE_AVAILABLE` guard; `test_native_fallback.py` |
 | Package/lock validity | `uv lock`, `uv lock --check` pass |
-| Full regression | full `src/tests` incl. notebooks: 416 passed, 1 xfailed |
+| Full regression | full `src/tests` incl. notebooks: 419 passed, 1 xfailed |
 
 ## Remaining work / decision needed
 
