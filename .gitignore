@@ -40,7 +40,6 @@ nosetests.xml
 package-lock.json
 pip-delete-this-directory.txt
 pip-log.txt
-uv.lock
 
 # folders
 .eggs/
