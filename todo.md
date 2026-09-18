@@ -46,10 +46,11 @@ Reader/writer directions are tested independently; related input fixes share a c
   `multimode(sdense, modes=("X",))` produces TE/TM instead of X. Verify custom
   modes across all three representations. Source: `src/sax/multimode.py`.
   Fixed dispatch; `test_custom_modes.py` plus smoke: **16 passed**.
-- [ ] **Resolve duplicate-COO conversion semantics.** Reproduced: conversion to
+- [x] **Resolve duplicate-COO conversion semantics.** Reproduced: conversion to
   dense sums duplicate coordinates, while conversion to dictionary keeps the last
   value. Decide whether to reject duplicates or reduce them consistently; add
   numerical conversion tests. Source: `src/sax/s.py`.
+  Both conversions now sum; duplicate/convention/smoke suite: **16 passed**.
 - [x] **Repair remaining Touchstone input paths.** Source:
   `src/sax/parsers/touchstone.py`.
   - [x] Implement documented default port labels or explicitly require labels.

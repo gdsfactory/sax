@@ -449,7 +449,8 @@ def _scoo_to_sdict(
     for i, (si, sj) in enumerate(zip(Si, Sj, strict=True)):
         output_port = inverse_ports_map.get(int(si), "")
         input_port = inverse_ports_map.get(int(sj), "")
-        sdict[input_port, output_port] = Sx[..., i]
+        key = input_port, output_port
+        sdict[key] = sdict.get(key, 0) + Sx[..., i]
     return {(p1, p2): v for (p1, p2), v in sdict.items() if p1 and p2}
 
 

@@ -10,7 +10,7 @@ separately from runtime reproduction. Do not infer an exhaustive bug audit.
 | --- | --- | --- |
 | **Resolved:** custom modes now apply to dense as well as dictionary/COO values and wrappers | `test_custom_modes.py` | All formats tested for custom-mode replication and extraction |
 | `get_modes` repeats mode names per port despite documenting uniqueness | **Reproduced**; [`s.py`](../src/sax/s.py), `get_modes` | Decide unique ordering and test multiple ports |
-| Duplicate COO coordinates sum in dense conversion but overwrite in dictionary conversion | **Reproduced**; `s.py`, `_scoo_to_sdense` / `_scoo_to_sdict` | Decide whether duplicates are invalid or require consistent reduction |
+| **Resolved:** duplicate COO coordinates sum in both dictionary and dense conversion | `test_sparse_duplicates.py` | Batch, cancellation, round-trip, JIT, and gradient checks |
 | `phase_shifter.loss` is multiplied by length, unlike its lumped-loss description | **Inspected**; [`models/straight.py`](../src/sax/models/straight.py) | Establish units and backward-compatibility policy before changing formula |
 | Constant feature/target columns divide by zero during neural fitting normalization | **Inspected**; [`fit.py`](../src/sax/fit.py), `neural_fit` | Decide rejection vs constant-column handling; test nonfinite outcomes |
 

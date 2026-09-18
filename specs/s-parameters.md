@@ -31,8 +31,9 @@ arbitrary sparse maps: COO-to-dense sizes the result from `len(port_map)`.
 
 ### Edge semantics
 
-- Repeated COO coordinates **sum** when converted to dense but **last-write wins**
-  when converted to a dictionary. Lossless round trips require unique coordinates.
+- Repeated COO coordinates **sum** in both dense and dictionary conversions.
+  Round trips preserve numerical values, not the original duplicate storage layout.
+  `test_sparse_duplicates.py` covers batches, cancellation, JIT, and gradients.
 - `reciprocal` overlays reversed entries, without conjugation. Supply one direction
   per pair or already equal values. Conflicting two-direction input is swapped,
   not reconciled into a symmetric matrix.
@@ -43,7 +44,7 @@ Evidence: [`s.py`](../src/sax/s.py), especially `_sdense_to_sdict`,
 `_sdict_to_scoo`, `_scoo_to_sdense`, and `reciprocal`.
 Tests: [`test_smatrix_convention.py`](../src/tests/test_smatrix_convention.py),
 including `test_sdense_convention`, `test_scoo_convention`, and conversion chains.
-Duplicate-coordinate differences were also reproduced during the baseline review.
+Duplicate-coordinate consistency is additionally covered by pytest regression tests.
 
 ## Modes
 
