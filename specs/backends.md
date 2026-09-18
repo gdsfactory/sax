@@ -11,9 +11,10 @@ The registry maps each backend to three functions:
 3. `evaluate_circuit(analyzed, instances)` combines evaluated component values.
 
 These are also available as lower-level APIs. Circuit construction wraps their
-output into the requested representation. The apparent FG fallback when `klujax`
-is missing is not reliable: the KLU module imports `klujax` before the fallback
-handler. It is a declared dependency, not a verified optional extra.
+output into the requested representation. `klujax` is mandatory, consistent with
+package metadata; a missing installation fails import rather than silently selecting
+FG. The old unreachable fallback was removed. `test_backend_dependency.py` verifies
+normal default selection and an isolated missing-dependency import.
 
 Evidence: [`backends/__init__.py`](../src/sax/backends/__init__.py),
 [`saxtypes/anymode.py`](../src/sax/saxtypes/anymode.py) (`val_backend`).

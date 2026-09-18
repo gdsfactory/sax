@@ -26,7 +26,7 @@ sax.get_modes(sax.multimode(s))  # currently ("TE", "TM", "TE", "TM")
 
 | Observation | Evidence | Next check |
 | --- | --- | --- |
-| Advertised no-klujax fallback is preceded by an unconditional KLU module import | **Inspected**; [`backends/__init__.py`](../src/sax/backends/__init__.py), [`klu.py`](../src/sax/backends/klu.py) | Decide whether KLU is genuinely optional; test isolated imports if so |
+| **Resolved:** KLU remains mandatory and the unreachable fallback was removed | `test_backend_dependency.py` | Isolated missing-dependency import and normal defaults tested |
 | **Resolved:** explicit DAG acyclicity validation produces a dependency-cycle diagnostic | `test_hierarchy_validation.py` | Self/multi-component cycles rejected; optical feedback still works |
 | **Resolved:** flattening and renaming now rewrite `nets` and preserve net metadata | `test_netlist_transforms.py`: KLU/FG equivalence, metadata, repeated endpoints, input isolation | Legacy `~` flattened names still require a valid identifier separator such as `__` for circuit construction |
 | Unconnected probes actually insert the four-port model and expose both taps, contrary to the alias-only docstring | **Inspected and covered by passing tests**; `expand_probes`, `test_probe_on_truly_unconnected_port` in [`test_probes.py`](../src/tests/test_probes.py) | Likely documentation correction; preserve tested behavior unless deliberately changed |

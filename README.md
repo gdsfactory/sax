@@ -129,6 +129,9 @@ You can install SAX with pip:
 pip install sax
 ```
 
+KLU is the default circuit backend. Its solver package `klujax` is a required
+SAX dependency and is installed automatically; there is no missing-KLU fallback.
+
 If you want to be able to run all the example notebooks, you'll need python>=3.10 and
 you should install the development version of SAX:
 

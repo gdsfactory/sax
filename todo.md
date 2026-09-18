@@ -86,10 +86,12 @@ Reader/writer directions are tested independently; related input fixes share a c
   stable diagnostics without rejecting legitimate optical feedback wiring.
   Source: `src/sax/circuits.py`. Explicit acyclicity check added;
   hierarchy/circuit/smoke suite: **12 passed**.
-- [ ] **Resolve the missing-KLU fallback.** Inspected: unconditional imports can
+- [x] **Resolve the missing-KLU fallback.** Inspected: unconditional imports can
   fail before the fallback handler runs. Decide whether KLU is mandatory or truly
   optional; align imports, metadata, documentation, and isolated import tests.
   Sources: `src/sax/backends/__init__.py`, `src/sax/backends/klu.py`.
+  KLU stays mandatory (existing metadata); removed unreachable fallback.
+  Default/isolated-import tests plus smoke: **6 passed**.
 - [ ] **Align smaller API behaviors and documentation.**
   - [ ] Decide unique-mode ordering for `get_modes` and test multiple ports.
     Reproduced: it repeats modes despite documenting uniqueness.
