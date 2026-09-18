@@ -467,3 +467,52 @@ def test_public_pic_loaders_produce_native() -> None:
     assert isinstance(cells[root], Netlist)
     nl = native.load_native_netlist(doc)
     assert isinstance(nl, Netlist)
+
+
+# ---------------------------------------------------------------------------
+# Native transforms and input isolation
+# ---------------------------------------------------------------------------
+
+
+def _wrap(component: str) -> Netlist:
+    nl = Netlist()
+    nl.create_port("in0")
+    nl.create_port("out0")
+    nl.create_inst("x", kcl="D", component=component)
+    nl.create_net(NetlistPort(name="in0"), PortRef(instance="x", port="in0"))
+    nl.create_net(PortRef(instance="x", port="out0"), NetlistPort(name="out0"))
+    return nl
+
+
+def _leaf_cell() -> Netlist:
+    nl = Netlist()
+    nl.create_port("in0")
+    nl.create_port("out0")
+    nl.create_inst("w", kcl="D", component="wg")
+    nl.create_net(NetlistPort(name="in0"), PortRef(instance="w", port="in0"))
+    nl.create_net(PortRef(instance="w", port="out0"), NetlistPort(name="out0"))
+    return nl
+
+
+def test_native_flatten_netlist() -> None:
+    cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
+    flat = native.flatten_netlist(cells, "top")
+    assert isinstance(flat, Netlist)
+    instances, nets, ports = native.lower(flat, native.legacy_orientation({}))
+    assert "x__x__w" in instances
+    assert ports == {"in0": "x__x__w,in0", "out0": "x__x__w,out0"}
+
+
+def test_native_flatten_recursive_netlist() -> None:
+    cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
+    flattened = native.flatten_recursive_netlist(cells)
+    assert all(isinstance(v, Netlist) for v in flattened.values())
+    assert "x__x__w" in flattened["top"].instances
+
+
+def test_circuit_does_not_mutate_native_input() -> None:
+    nl = _two_leaves()
+    before = nl.to_dict()
+    model, _ = sax.circuit(nl, {"wg": lambda v=1.0: _leaf(v)}, probes={"mid": "a,out0"})
+    del model
+    assert nl.to_dict() == before

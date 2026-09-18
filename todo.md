@@ -168,8 +168,9 @@ and removing the legacy TypedDict input types.
   preserved via `legacy_orientation`; native input without direction raises for
   the `forward` backend rather than guessing.
 - [ ] Retire the legacy TypedDict input types and `netlists.py` transforms once
-  native equivalents cover rename/flatten/pruning. They are currently retained
-  as public input/utility APIs but are not used by circuit construction.
+  native equivalents cover rename/flatten/pruning. Native flatten now exists
+  (`native.flatten_netlist`, `flatten_recursive_netlist`); legacy transforms remain
+  as public compatibility utilities and are not used by circuit construction.
 - [ ] Add the approved dependency/version policy, deliberately update the lockfile,
   and run `uv lock --check` plus isolated installation/import tests on supported
   Python/OS combinations. Keep layout extraction dependencies out of core imports.

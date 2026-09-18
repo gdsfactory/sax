@@ -22,8 +22,9 @@ checklist: [`todo.md`](../../todo.md). Existing contracts remain in
 | Probes and internal-port policy | Implemented at lowering time |
 | ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
 | Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
+| Native flatten transforms (`flatten_netlist`, `flatten_recursive_netlist`) | Implemented using kfnetlist's `flatten_netlists` |
 | Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as input and by legacy utility transforms; no longer used for circuit construction |
-| Native topology transforms (`netlists.py`) | Not migrated; legacy transforms still operate on dictionaries |
+| Legacy `netlists.py` transforms (rename/flatten on dicts) | Retained as public compatibility utilities; prefer the native transforms |
 
 ### Directed connections versus undirected nets
 

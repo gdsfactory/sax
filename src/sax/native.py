@@ -634,3 +634,66 @@ def load_native_recursive_netlist(
             raise ValueError(msg)
         cells[name] = load_native_netlist(path)
     return cells, root
+
+
+def hierarchy_cell_maps(
+    cells: Mapping[str, Netlist],
+    models: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, str]]:
+    """Build kfnetlist ``instance -> cell`` maps from a native hierarchy."""
+    models = models or {}
+    maps: dict[str, dict[str, str]] = {}
+    for cell_name, nl in cells.items():
+        entry: dict[str, str] = {}
+        for name, inst in nl.instances.items():
+            key = resolve(inst, models, cells)
+            if key is not None and key in cells:
+                entry[name] = key
+        maps[cell_name] = entry
+    return maps
+
+
+def flatten_netlist(
+    cells: Mapping[str, Netlist],
+    root: str,
+    *,
+    models: Mapping[str, Any] | None = None,
+    separator: str = "__",
+    recursive: bool = True,
+) -> Netlist:
+    """Flatten a native hierarchy's root netlist using kfnetlist's flattening.
+
+    Cells referenced by a factory that is replaced by an analytical model are not
+    inlined (they have no child netlist). ``separator`` joins hierarchical
+    instance names; ``__`` is Python-identifier safe.
+    """
+    from kfnetlist import flatten_netlists
+
+    maps = hierarchy_cell_maps(cells, models)
+    flattened = flatten_netlists(
+        dict(cells),
+        None,
+        instance_cell_maps=maps,
+        recursive=recursive,
+        separator=separator,
+    )
+    return flattened[root]
+
+
+def flatten_recursive_netlist(
+    cells: Mapping[str, Netlist],
+    *,
+    models: Mapping[str, Any] | None = None,
+    separator: str = "__",
+) -> NativeHierarchy:
+    """Flatten every cell of a native hierarchy in place-independent fashion."""
+    from kfnetlist import flatten_netlists
+
+    maps = hierarchy_cell_maps(cells, models)
+    return flatten_netlists(
+        dict(cells),
+        None,
+        instance_cell_maps=maps,
+        recursive=True,
+        separator=separator,
+    )
