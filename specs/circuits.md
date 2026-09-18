@@ -42,9 +42,10 @@ Tests: [`test_netlist.py`](../src/tests/test_netlist.py),
 returns `(model, CircuitInfo)`. `CircuitInfo` contains the component dependency
 DAG, constructed/resolved component models, and canonical backend name.
 
-Construction extracts direct callable instances, normalizes the recursive netlist,
-patches arrays, handles internal ports, expands probes, resolves arrays, filters
-portless sub-netlists, and prunes instances disconnected from external ports.
+Construction adapts callable instances and settings, normalizes native topology,
+validates/plans probe paths, and prunes instances disconnected from ports or probe
+roots before validating model dependencies. Lowering expands arrays, handles
+internal ports, and inserts probes; root-port validation uses the resulting ports.
 Dependencies are constructed leaf-first; an explicitly supplied model can stand
 in for a subcircuit. Missing leaf models raise `ValueError` with model diagnostics.
 Hierarchy must be acyclic even when optical wiring has feedback. Explicit
@@ -71,8 +72,12 @@ independent per-element parameter addressing. Array extent inference and expansi
 `connections` and `nets` endpoints are rewritten, including links within one child,
 and net names/settings are retained. Use `sep="__"` when constructing a circuit
 from the result: the legacy `~` separator is not a valid model-signature identifier.
-Instance renaming updates both wiring formats without mutating input. Flattening
-is not a general hierarchical placement/settings composition API.
+Instance renaming updates both wiring formats without mutating input. Native
+flattening preserves analytical model boundaries using explicit instance-cell maps
+and existing cell exclusions. It can retain one modeled instance while expanding
+another instance of the same cell. Hierarchy pruning dispatches per cell and uses
+instance connectivity directly, without synthetic names that could collide.
+Flattening is not a general hierarchical placement/settings composition API.
 Regression tests: `src/tests/test_netlist_transforms.py`.
 
 ## Native model keys and API boundary
@@ -170,3 +175,23 @@ Evidence: `expand_probes`, `_expand_probes_recursive`, `extract_port_probes` in
 Tests: [`test_probes.py`](../src/tests/test_probes.py), notably forward direction,
 non-perturbation, boundary/unconnected cases, hierarchy, conflicts, and internal
 port policies. These do not establish arbitrary multiply connected probe behavior.
+
+## Native topology validation
+
+Native nets with more than two instance endpoints are rejected: use an explicit
+junction model or specify pairwise edges with the intended KLU semantics. Explicit
+pairwise multi-links retain KLU's existing behavior and FG/additive restrictions.
+External-only nets, unattached declared external ports, external aliases targeting
+one instance port, and contradictory external attachments are rejected explicitly.
+A singleton internal endpoint is an unconnected model port and adds no connection.
+Unknown instance references and out-of-range array references are rejected.
+
+Probe names are checked against caller ports/instances before pruning, and against
+ports at every ancestor when exposed through hierarchy. Probes into model-replaced
+subtrees are rejected. Portless root/child circuits may be retained by explicit
+probe paths; a root with no effective ports after transformations is rejected with
+the at-least-one-port diagnostic. Array index dots are not hierarchy separators,
+and runtime array settings remain keyed by the base instance name.
+
+Evidence: `src/tests/test_native_topology.py`, `test_probes.py`,
+`test_backend_restrictions.py`, and `test_hierarchy_validation.py`.

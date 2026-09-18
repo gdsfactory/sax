@@ -267,12 +267,21 @@ def _circuit_native(
     )
 
     models = dict(models or {})
-    dependency_dag = _native_dag(cells, root, models, require_models=True)
-    models = _validate_models(models, dependency_dag)
-
     top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
         cells, root, models, probes or {}
     )
+    keep = {cell: tuple(targets.values()) for cell, targets in per_cell_probes.items()}
+    keep[root] = (*keep.get(root, ()), *top_probes.values())
+    for path in probe_paths.values():
+        for instance, parent in path:
+            keep[parent] = (*keep.get(parent, ()), instance)
+    cells = {
+        name: native.remove_unused_instances(nl, keep=keep.get(name, ()))
+        for name, nl in cells.items()
+    }
+    dependency_dag = _native_dag(cells, root, models, require_models=True)
+    models = _validate_models(models, dependency_dag)
+
     extra_ports: dict[str, dict[str, str]] = {}
     for probe_name, path in probe_paths.items():
         for instance_name, parent in reversed(path):
@@ -282,17 +291,6 @@ def _circuit_native(
             extra_ports.setdefault(parent, {})[f"{probe_name}_bwd"] = (
                 f"{instance_name},{probe_name}_bwd"
             )
-
-    root_instances, root_nets, root_ports = native.lower(cells[root])
-    del root_instances, root_nets
-    has_probes = bool(probes) or bool(per_cell_probes)
-    if len(root_ports) < 1 and not has_probes:
-        ports_str = ", ".join(root_ports) or "no ports given"
-        msg = (
-            "Cannot create circuit: "
-            f"at least 1 port needs to be defined. Got {ports_str}."
-        )
-        raise ValueError(msg)
 
     circuit = None
     new_models: sax.Models = {}
@@ -321,6 +319,9 @@ def _circuit_native(
             inst["component"] = key
 
         for port_name, endpoint in extra_ports.get(model_name, {}).items():
+            if port_name in ports:
+                msg = f"Hierarchical probe port {port_name!r} conflicts with an existing port in {model_name!r}."
+                raise ValueError(msg)
             ports[port_name] = endpoint
 
         probe_here: dict[str, str] = {}
@@ -336,6 +337,10 @@ def _circuit_native(
             instances, nets, ports = native.expand_probes_tables(
                 instances, nets, ports, probe_here
             )
+
+        if model_name == root and not ports:
+            msg = "Cannot create circuit: at least 1 port needs to be defined. Got no ports given."
+            raise ValueError(msg)
 
         available: sax.Models = {**models, **current_models}
         if probe_here:
@@ -438,6 +443,7 @@ def get_required_circuit_models(
         top_level_name=top_level_name,
         settings_table={},
     )
+    cells = {name: native.remove_unused_instances(nl) for name, nl in cells.items()}
     dependency_dag = _native_dag(cells, root, merged)
     _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
@@ -607,8 +613,9 @@ def _validate_models(
 def _forward_global_settings(
     instances: sax.Instances, settings: sax.Settings
 ) -> sax.Settings:
+    instance_names = {_strip_array_index(name) for name in instances}
     global_settings = {
-        k: settings.pop(k) for k in list(settings.keys()) if k not in instances
+        k: settings.pop(k) for k in list(settings.keys()) if k not in instance_names
     }
     if global_settings:
         settings = update_settings(settings, **global_settings)

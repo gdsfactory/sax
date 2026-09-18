@@ -23,9 +23,11 @@ into SAX's legacy dictionary schema for construction. The forward backend and di
 
 kfnetlist array references translate 1-based `ia/ib` to zero-based
 `instance<column.row>,port`. Collapsed references to array instances target `<0.0>`.
-External members attach to the first instance member; multiple instance members
-are connected in a chain, not expanded to all pairwise links. Unused layout fields
-are not retained. The adapter itself does not import kfnetlist.
+The compatibility `parse_kfnetlist` adapter attaches external members to the first
+instance member and lowers multiple members as a chain. The canonical native
+circuit path instead rejects unsupported junctions, aliases, and unattached
+external ports; see `circuits.md`. Unused layout fields are not retained by the
+compatibility adapter, which itself does not import kfnetlist.
 In particular it drops `kcl` and placed-instance `cell` references, so it does not
 support general hierarchy fallback when factory names differ from cell-map keys.
 The [canonical kfnetlist investigation](changes/kfnetlist-canonical.md) records a

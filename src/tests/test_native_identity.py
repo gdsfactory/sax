@@ -48,7 +48,15 @@ def test_unqualified_factory_collision_is_explicit() -> None:
 
 def test_single_library_keeps_exact_numeric_factory_name() -> None:
     nl = _two_libraries()
-    nl.remove_instances(["b"])
+    data = nl.to_dict()
+    del data["instances"]["b"]
+    data["ports"] = [port for port in data["ports"] if port["name"].startswith("a_")]
+    data["nets"] = [
+        net
+        for net in data["nets"]
+        if not any(member.get("instance") == "b" for member in net)
+    ]
+    nl = PlacedNetlist.from_dict(data)
     model, _ = sax.circuit(nl, {"coupler2": _model})
     np.testing.assert_allclose(model()["a_in", "a_out"], 1)
     with pytest.raises(ValueError, match="Missing models.*factory='coupler2'"):

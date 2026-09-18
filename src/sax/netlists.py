@@ -143,7 +143,12 @@ def remove_unused_instances(netlist: sax.AnyNetlist) -> sax.AnyNetlist:
     if _is_native_input(netlist):
         from . import native
 
-        return native.remove_unused_instances(netlist)  # type: ignore[arg-type]
+        if native.is_native(netlist):
+            return native.remove_unused_instances(netlist)  # type: ignore[arg-type]
+        return {
+            name: native.remove_unused_instances(nl)
+            for name, nl in netlist.items()  # type: ignore[union-attr]
+        }
     if "instances" in netlist:
         net = cast(sax.Netlist, deepcopy(netlist))
         names = _get_nodes_to_remove(_get_connectivity_graph(net), net)

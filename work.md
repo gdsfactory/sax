@@ -55,7 +55,7 @@ similar historical checks passed.
 | --- | --- | --- | --- |
 | 1 | Backend scope and identity/API boundaries settled | Complete | 80 focused tests passed |
 | 2 | Input settings, placements, and native identities preserved | Complete | 55 acceptance + 51 regression tests passed |
-| 3 | Hierarchy, transforms, probes, and topology corrected | Not started | Not run |
+| 3 | Hierarchy, transforms, probes, and topology corrected | Complete | 75 acceptance + 44 regression tests passed |
 | 4 | PIC workflows and real extraction validated | Not started | Not run |
 | 5 | Compatibility evidence, documentation, and cleanup complete | Not started | Not run |
 
@@ -137,37 +137,47 @@ quality cleanup. **Stage commit:** this stage's commit includes this record.
 **Outcome:** topology preparation preserves model boundaries and connectivity,
 rejects unsupported cases explicitly, and does not mutate caller input.
 
-- [ ] Restore pruning before dependency/model validation (**5**), including
+- [x] Restore pruning before dependency/model validation (**5**), including
   disconnected layout-only subcircuits while retaining probe-required instances.
   Fix hierarchy dispatch (**12**) and synthetic graph-node collisions (**15**).
   Preserve root/order, native types, and input isolation. Cover required-model
   discovery and a connected instance named `__port_0`.
-- [ ] Make selective flattening preserve analytically replaced instances (**9**),
+- [x] Make selective flattening preserve analytically replaced instances (**9**),
   even when their child definitions are present. Use existing cell exclusions
   where sufficient and isolate any additional SAX mechanism for replacement by
   upstream support. Check rename/flatten/prune equivalence, settings, identities,
   array handling, and caller-input isolation.
-- [ ] Reject hierarchical probe-port collisions at every parent level (**8**).
+- [x] Reject hierarchical probe-port collisions at every parent level (**8**).
   Preserve explicit rejection of probing inside an analytically replaced opaque
   subtree; never silently substitute the layout's physics to satisfy a probe.
-- [ ] Validate effective root ports after internal-port handling and probe
+- [x] Validate effective root ports after internal-port handling and probe
   expansion (**16**). Restore the useful at-least-one-port diagnostic while
   preserving valid probe-only circuits.
-- [ ] Decide and implement supported native lowering for declared unconnected
+- [x] Decide and implement supported native lowering for declared unconnected
   ports and external-only nets (**14**); extend acceptance cases to aliases,
   singleton ports, n-terminal nets, and repeated endpoints. Establish KLU parity
   and restrictions of the remaining backends. Unsupported cases must error rather
   than disappear or acquire arbitrary junction/splitter behavior.
 
-**Open decision:** numerical semantics for unsupported ports, aliases, and
-junctions remain unresolved. Characterize current behavior and choose supported
-semantics or explicit rejection before implementing that task. Existing legacy
-multi-link tests do not establish every native-net case.
+**Decision:** reject native n-terminal junctions, external-only nets, aliases,
+and unattached declared external ports with explicit diagnostics. Preserve explicit
+pairwise multi-link KLU semantics and existing FG/additive restrictions; singleton
+internal ports remain unconnected. This avoids inventing junction physics.
+**Additional finding fixed:** expanded-array base settings were misclassified as
+globals; `_forward_global_settings` now recognizes base names. Probe collision
+validation runs before pruning so disconnected conflicting instances cannot hide
+an invalid request. Native flattening uses absent-target map entries to keep model
+boundaries per instance, plus cell exclusions for exact cell model overrides.
 
 **Verification:** focused hierarchy/transform/probe tests pass, including missing
 unused models, collisions, shared child definitions, arrays, and input isolation.
 Use asymmetric numerical fixtures for lowering and model-boundary equivalence.
-**Evidence:** not run. **Stage commit:** pending execution and verification.
+**Evidence:** native settings/input/topology/identity, smoke, and transform checks:
+**75 passed** (28.97s); probes, backend restrictions, and hierarchy validation:
+**44 passed** (20.93s), existing `.venv`. Initial failures exposed collision-check
+ordering and an invalid test fixture with dangling ports; both were corrected
+before these passing runs. Formatting/whitespace checks passed. Hooks remain
+assigned to stage 5. **Stage commit:** this stage's commit includes this record.
 
 ## Stage 4 — Validate PIC workflows and real extraction
 

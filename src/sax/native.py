@@ -24,6 +24,7 @@ Model resolution precedence (see ``specs/changes/kfnetlist-canonical.md``):
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -345,7 +346,14 @@ def lower(
     def member_endpoint(member: Any) -> str | None:
         if isinstance(member, NetlistPort):
             return None
+        if member.instance not in array_sizes:
+            msg = f"Net references unknown instance {member.instance!r}."
+            raise ValueError(msg)
         if isinstance(member, PortArrayRef):
+            na, nb = array_sizes[member.instance]
+            if not (1 <= member.ia <= na and 1 <= member.ib <= nb):
+                msg = f"Array reference {member!r} is outside its declared dimensions."
+                raise ValueError(msg)
             key = _expanded_name(
                 member.instance,
                 member.ia - 1,
@@ -368,11 +376,39 @@ def lower(
         internal = [m for m in members if not isinstance(m, NetlistPort)]
         endpoints = [member_endpoint(m) for m in internal]
         endpoints = [e for e in endpoints if e is not None]
+        if externals and not endpoints:
+            msg = (
+                "External-only nets are unsupported; connect each port to an instance."
+            )
+            raise ValueError(msg)
+        if len(endpoints) > 2:
+            msg = (
+                "Native nets with more than two instance ports require an explicit "
+                "junction model or explicitly specified pairwise connections."
+            )
+            raise ValueError(msg)
         for external in externals:
-            if external.name in declared and endpoints:
-                ports[external.name] = endpoints[0]
+            if external.name not in declared:
+                msg = f"Net references undeclared external port {external.name!r}."
+                raise ValueError(msg)
+            endpoint = endpoints[0]
+            if external.name in ports and ports[external.name] != endpoint:
+                msg = (
+                    f"External port {external.name!r} targets multiple instance ports."
+                )
+                raise ValueError(msg)
+            ports[external.name] = endpoint
         for a, b in zip(endpoints, endpoints[1:]):
             nets.append({"p1": a, "p2": b})
+    missing = declared - ports.keys()
+    if missing:
+        msg = (
+            f"Declared external ports have no instance connection: {sorted(missing)!r}."
+        )
+        raise ValueError(msg)
+    if len(set(ports.values())) != len(ports):
+        msg = "External port aliases targeting the same instance port are unsupported."
+        raise ValueError(msg)
     return instances, nets, ports
 
 
@@ -585,6 +621,18 @@ def expand_probes_tables(
     return instances, nets, ports
 
 
+def _validate_probe_name(nl: Netlist, name: str, *, insert_instance: bool) -> None:
+    ports = {port.name for port in nl.ports}
+    if {f"{name}_fwd", f"{name}_bwd"} & ports:
+        msg = f"Probe {name!r} would create ports that conflict with existing ports."
+        raise ValueError(msg)
+    if insert_instance and f"_probe_{name}" in nl.instances:
+        msg = (
+            f"Probe instance name '_probe_{name}' conflicts with an existing instance."
+        )
+        raise ValueError(msg)
+
+
 def plan_hierarchical_probes(
     cells: Mapping[str, Netlist],
     root: str,
@@ -596,14 +644,16 @@ def plan_hierarchical_probes(
     per_cell: dict[str, dict[str, str]] = {}
     paths: dict[str, list[tuple[str, str]]] = {}
     for probe_name, target in probes.items():
-        parts = target.split(".")
+        parts = re.split(r"\.(?![^<]*>)", target)
         if len(parts) == 1:
+            _validate_probe_name(cells[root], probe_name, insert_instance=True)
             top[probe_name] = target
             continue
         current = root
         path: list[tuple[str, str]] = []
         for instance_name in parts[:-1]:
-            inst = cells[current].instances.get(instance_name)
+            _validate_probe_name(cells[current], probe_name, insert_instance=False)
+            inst = cells[current].instances.get(instance_name.split("<", 1)[0])
             if inst is None:
                 msg = (
                     f"Hierarchical probe '{probe_name}': instance "
@@ -621,6 +671,7 @@ def plan_hierarchical_probes(
                 raise ValueError(msg)
             path.append((instance_name, current))
             current = key
+        _validate_probe_name(cells[current], probe_name, insert_instance=True)
         per_cell.setdefault(current, {})[probe_name] = parts[-1]
         paths[probe_name] = path
     return top, per_cell, paths
@@ -721,11 +772,18 @@ def hierarchy_cell_maps(
     """Build kfnetlist ``instance -> cell`` maps from a native hierarchy."""
     models = models or {}
     maps: dict[str, dict[str, str]] = {}
+    opaque = "_sax_opaque_model"
+    while opaque in cells:
+        opaque += "_"
     for cell_name, nl in cells.items():
         entry: dict[str, str] = {}
         for name, inst in nl.instances.items():
             key = resolve(inst, models, cells)
-            if key is not None and key in cells:
+            if key in models:
+                # Explicit maps override PlacedInstance.cell during flattening.
+                # A deliberately absent target leaves this instance untouched.
+                entry[name] = opaque
+            elif key is not None and key in cells:
                 entry[name] = key
         maps[cell_name] = entry
     return maps
@@ -752,6 +810,7 @@ def flatten_netlist(
         dict(cells),
         None,
         instance_cell_maps=maps,
+        exclude=list(set(models or {}) & set(cells)),
         recursive=recursive,
         separator=separator,
     )
@@ -772,42 +831,39 @@ def flatten_recursive_netlist(
         dict(cells),
         None,
         instance_cell_maps=maps,
+        exclude=list(set(models or {}) & set(cells)),
         recursive=True,
         separator=separator,
     )
 
 
-def remove_unused_instances(nl: Netlist) -> Netlist:
-    """Return a copy of *nl* with instances unreachable from its ports removed.
-
-    Uses native ``remove_instances``; connectivity is read from the lowered
-    topology tables so no legacy dictionary schema is involved.
-    """
+def remove_unused_instances(
+    nl: Netlist,
+    *,
+    keep: tuple[str, ...] = (),
+) -> Netlist:
+    """Copy and prune instances disconnected from declared ports or probe roots."""
     import networkx as nx
 
-    instances, nets, ports = lower(nl)
     graph = nx.Graph()
-    for name in instances:
-        graph.add_node(name)
-    for net in nets:
-        graph.add_edge(net["p1"].split(",")[0], net["p2"].split(",")[0])
-    roots = {f"__port_{i}": ep.split(",")[0] for i, ep in enumerate(ports.values())}
-    for node, target in roots.items():
-        graph.add_node(node)
-        graph.add_edge(node, target)
-    keep: set[str] = set()
-    for node in roots:
-        keep |= nx.descendants(graph, node)
-    base_keep = {name.split("<")[0] for name in keep}
-    remove = [base for base in _base_instance_names(nl) if base not in base_keep]
+    graph.add_nodes_from(nl.instances)
+    roots = {endpoint.split(",", 1)[0].split("<", 1)[0] for endpoint in keep}
+    declared = {port.name for port in nl.ports}
+    for net in nl.nets:
+        members = list(net)
+        names = [m.instance for m in members if isinstance(m, (PortRef, PortArrayRef))]
+        graph.add_edges_from(zip(names, names[1:], strict=False))
+        if any(isinstance(m, NetlistPort) and m.name in declared for m in members):
+            roots.update(names)
+    reachable: set[str] = set()
+    for root in roots:
+        if root in graph:
+            reachable.update(nx.node_connected_component(graph, root))
     result = copy_netlist(nl)
-    if remove:
-        result.remove_instances(remove)
+    unused = [name for name in nl.instances if name not in reachable]
+    if unused:
+        result.remove_instances(unused)
     return result
-
-
-def _base_instance_names(nl: Netlist) -> list[str]:
-    return list(nl.instances)
 
 
 def rename_instances(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
