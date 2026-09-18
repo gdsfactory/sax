@@ -15,7 +15,6 @@ nav = [
     {"additive" = "nbs/examples/06_additive_backend.md"},
     {"layout aware" = "nbs/examples/07_layout_aware.md"},
     {"sparse (coo)" = "nbs/examples/08_sparse_coo.md"},
-    {"forward only" = "nbs/examples/09_forward_only_backend.md"},
     {"neff dispersion" = "nbs/examples/10_wavelength_dependent_neff.md"},
     {"hierarchical circuits" = "nbs/examples/11_hierarchical_circuits.md"},
     {"data parsers" = "nbs/examples/12_data_parsers.md"},

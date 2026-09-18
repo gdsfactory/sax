@@ -42,7 +42,12 @@ def _leaf(v: float = 1.0) -> sax.SDict:
 def _chain(components: list[tuple[str, dict]], ports: bool = True) -> Netlist:
     nl = Netlist()
     for name, spec in components:
-        nl.create_inst(name, kcl="D", component=spec["component"], settings=spec.get("settings", {}))
+        nl.create_inst(
+            name,
+            kcl="D",
+            component=spec["component"],
+            settings=spec.get("settings", {}),
+        )
     if ports:
         nl.create_port("in0")
         nl.create_port("out0")
@@ -58,7 +63,10 @@ def _placed_sub(leaf: str, value: float) -> PlacedNetlist:
         settings={"v": value},
         cell=leaf + "_cell",
         placement=Placement(
-            x=0.0, y=0.0, orientation=0.0, mirror=False,
+            x=0.0,
+            y=0.0,
+            orientation=0.0,
+            mirror=False,
             bbox={"left": 0.0, "bottom": 0.0, "right": 1.0, "top": 1.0},
         ),
     )
@@ -71,8 +79,12 @@ def _placed_sub(leaf: str, value: float) -> PlacedNetlist:
 
 def _placed_top() -> PlacedNetlist:
     top = PlacedNetlist()
-    top.create_inst("a", kcl="D", component="coupled", settings={"gain": 0.2}, cell="cell_a")
-    top.create_inst("b", kcl="D", component="coupled", settings={"gain": 0.3}, cell="cell_b")
+    top.create_inst(
+        "a", kcl="D", component="coupled", settings={"gain": 0.2}, cell="cell_a"
+    )
+    top.create_inst(
+        "b", kcl="D", component="coupled", settings={"gain": 0.3}, cell="cell_b"
+    )
     for port in ("a_in", "a_out", "b_in", "b_out"):
         top.create_port(port)
     top.create_net(NetlistPort(name="a_in"), PortRef(instance="a", port="in0"))
@@ -229,7 +241,10 @@ def test_native_array_expansion() -> None:
     nl = Netlist()
     nl.create_port("in0")
     nl.create_inst("arr", kcl="D", component="leaf", settings={"v": 3.0}, na=2, nb=1)
-    nl.create_net(NetlistPort(name="in0"), native.PortArrayRef(instance="arr", port="in0", ia=1, ib=1))
+    nl.create_net(
+        NetlistPort(name="in0"),
+        native.PortArrayRef(instance="arr", port="in0", ia=1, ib=1),
+    )
     model, _ = sax.circuit(nl, {"leaf": lambda v=1.0: _leaf(v)})
     result = model()
     assert ("in0", "in0") in result
@@ -251,9 +266,7 @@ def test_native_settings_jit_gradient(backend: sax.BackendLike) -> None:
     np.testing.assert_allclose(
         jax.jit(model)(wl=wl)["in0", "out0"], 2 * jnp.exp(1j * wl), rtol=1e-5
     )
-    gradient = jax.grad(
-        lambda g: jnp.abs(model(gain=g)["in0", "out0"]) ** 2
-    )(2.0)
+    gradient = jax.grad(lambda g: jnp.abs(model(gain=g)["in0", "out0"]) ** 2)(2.0)
     np.testing.assert_allclose(gradient, 4.0, rtol=1e-5)
 
 
@@ -304,7 +317,9 @@ def test_native_hierarchical_probe() -> None:
     sub.create_port("in0")
     sub.create_port("out0")
     sub.create_net(NetlistPort(name="in0"), PortRef(instance="a", port="in0"))
-    sub.create_net(PortRef(instance="a", port="out0"), PortRef(instance="b", port="in0"))
+    sub.create_net(
+        PortRef(instance="a", port="out0"), PortRef(instance="b", port="in0")
+    )
     sub.create_net(PortRef(instance="b", port="out0"), NetlistPort(name="out0"))
 
     top = PlacedNetlist()
@@ -362,37 +377,6 @@ def test_load_pic_yaml_modules() -> None:
     assert isinstance(cells["child"], Netlist)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "kfnetlist Net is undirected; the forward backend needs directed "
-        "connections. Blocked on a directed-connection representation upstream."
-    ),
-)
-def test_native_forward_backend_direction_blocker() -> None:
-    net = {
-        "instances": {"s": "split", "w": "wg", "m": "merge"},
-        "connections": {"s,out0": "m,in0", "s,out1": "w,in0", "w,out0": "m,in1"},
-        "ports": {"in0": "s,in0", "out0": "m,out0"},
-    }
-    nl = native.from_legacy_flat(net)
-    cells = {"top_level": nl}
-
-    def split() -> sax.SDict:
-        return {("in0", "out0"): 0.2, ("in0", "out1"): 0.3}
-
-    def merge() -> sax.SDict:
-        return {("in0", "out0"): 0.4, ("in1", "out0"): 0.5}
-
-    def wg(gain: float = 0.8) -> sax.SDict:
-        return {("in0", "out0"): jnp.asarray(gain)}
-
-    model, _ = sax.circuit(
-        cells, {"split": split, "merge": merge, "wg": wg}, backend="forward"
-    )
-    np.testing.assert_allclose(complex(model(w={"gain": 0.8})["in0", "out0"]), 0.2)
-
-
 def test_load_native_recursive_netlist(tmp_path) -> None:
     top = tmp_path / "top.pic.yml"
     top.write_text(
@@ -406,9 +390,7 @@ def test_load_native_recursive_netlist(tmp_path) -> None:
     assert root == "top"
     assert set(cells) == {"top", "child"}
     assert all(isinstance(v, Netlist) for v in cells.values())
-    model, _ = sax.circuit(
-        cells, {"wg": lambda v=1.0: _leaf(v)}, top_level_name=root
-    )
+    model, _ = sax.circuit(cells, {"wg": lambda v=1.0: _leaf(v)}, top_level_name=root)
     assert ("in0", "out0") in model()
 
 
@@ -458,11 +440,7 @@ def test_circuit_does_not_use_legacy_recursive_netlist_helper(monkeypatch) -> No
 
 
 def test_public_pic_loaders_produce_native() -> None:
-    doc = (
-        "instances:\n"
-        "  a:\n    component: wg\n"
-        "ports:\n  in0: a,in0\n  out0: a,out0\n"
-    )
+    doc = "instances:\n  a:\n    component: wg\nports:\n  in0: a,in0\n  out0: a,out0\n"
     cells, root = native.load_pic_yaml(doc)
     assert isinstance(cells[root], Netlist)
     nl = native.load_native_netlist(doc)
@@ -498,7 +476,7 @@ def test_native_flatten_netlist() -> None:
     cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
     flat = native.flatten_netlist(cells, "top")
     assert isinstance(flat, Netlist)
-    instances, nets, ports = native.lower(flat, native.legacy_orientation({}))
+    instances, nets, ports = native.lower(flat)
     assert "x__x__w" in instances
     assert ports == {"in0": "x__x__w,in0", "out0": "x__x__w,out0"}
 
@@ -522,7 +500,7 @@ def test_sax_flatten_netlist_dispatches_native() -> None:
     cells = {"top": _wrap("mid"), "mid": _wrap("leaf"), "leaf": _leaf_cell()}
     flat = sax.flatten_netlist(cells, sep="__")
     assert isinstance(flat, Netlist)
-    assert "x__x__w" in native.lower(flat, [])[0]
+    assert "x__x__w" in native.lower(flat)[0]
 
 
 def test_native_remove_unused_instances() -> None:

@@ -17,7 +17,7 @@ def _multilink_netlist() -> dict:
     }
 
 
-@pytest.mark.parametrize("backend", ["fg", "forward", "additive"])
+@pytest.mark.parametrize("backend", ["fg", "additive"])
 def test_pairwise_backends_reject_multilinks(backend: sax.BackendLike) -> None:
     with pytest.raises(ValueError, match="Multiply connected ports"):
         sax.circuit(_multilink_netlist(), {"component": _component}, backend=backend)

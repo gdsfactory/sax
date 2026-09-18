@@ -5,9 +5,7 @@ and ``.pic.yml`` into native kfnetlist objects and builds every circuit through 
 single native path (`src/sax/native.py`, `_circuit_native`). Native ``Netlist``
 / ``PlacedNetlist`` hierarchies are accepted directly; factory ``component``
 models are resolved before descending into a distinct ``PlacedInstance.cell``
-(issue #120). Directed legacy ``connections`` are preserved as orientation hints
-so the ``forward`` backend still sees declared signal direction; native input
-without direction errors for that backend. SAX inspected at `e23d710`; local
+(issue #120). The forward backend and its direction hints have been removed. SAX inspected at `e23d710`; local
 kfnetlist at `7379b68cbed3a7fe01bc11505d789fb53bae6cb9`. Implementation
 follow-up work: [`work.md`](../../work.md). Existing contracts remain in
 [circuits](../circuits.md) and [data workflows](../data-workflows.md).
@@ -21,7 +19,7 @@ follow-up work: [`work.md`](../../work.md). Existing contracts remain in
 | Factory-vs-cell resolution and distinct-cell fallback (#120) | Implemented; tested |
 | Probes and internal-port policy | Implemented at lowering time |
 | ``.pic.yml``/legacy YAML → native (`native.load_pic_yaml`, native loaders) | Implemented |
-| Directed legacy connections for the ``forward`` backend | Preserved via orientation hints; native input without direction errors |
+| Forward backend | Removed; native and legacy wiring is undirected |
 | Native flatten/rename/prune transforms | `native.flatten_netlist`, `flatten_recursive_netlist`, `rename_instances`, `rename_models`, `remove_unused_instances`; public transforms dispatch to them for native input |
 | Legacy fallback / old circuit builder | Removed; kfnetlist is required and Python minimum is >=3.12 |
 | Old ``sax.Netlist`` TypedDict/Pydantic schema | Still accepted as an *input* format and adapted into native by `native.to_hierarchy`; no longer used for circuit construction |
@@ -39,17 +37,11 @@ first. `uv lock` and `uv lock --check` pass. This is an intentional, documented
 public compatibility change; it can be revisited if kfnetlist ships 3.11 wheels
 or a shim is chosen instead.
 
-### Directed connections versus undirected nets
+### Undirected connectivity
 
-kfnetlist ``Net`` is unordered (``create_net``/``Net([...])`` sort members).
-SAX's legacy ``connections`` mapping is directed and the ``forward`` backend
-encodes signal direction as edge orientation. The legacy adapter therefore keeps
-``legacy_orientation`` hints and ``lower`` applies them so declared direction is
-preserved. Native input without hints cannot express direction, so ``sax.circuit``
-raises a clear ``ValueError`` for the ``forward`` backend instead of silently
-using arbitrary orientation (`test_native_forward_backend_direction_blocker`).
-A released kfnetlist directed-connection/module type would remove the hint.
-
+The forward backend and its endpoint-order hints are removed. Native netlists
+need no direction metadata; KLU/FG retain their bidirectional connection semantics.
+Physical forward/backward probe measurements remain supported.
 
 ## Required architecture
 
@@ -351,7 +343,7 @@ suite including notebooks before declaring the migration implemented.
 | Model overrides, missing-model diagnostics | `test_cell_specific_override_beats_factory_model`, `test_missing_model_reports_factory_and_cell` |
 | Settings, arrays, probes, hierarchy validation, net lowering, input isolation | `test_native_settings_jit_gradient`, `test_native_array_expansion`, `test_native_flat_probe`, `test_native_hierarchical_probe`, `test_native_internal_port_warn_drops_port`, `test_dependency_cycles_have_explicit_diagnostic`, `test_circuit_does_not_mutate_native_input` |
 | PIC loaders/transforms produce native | `test_public_pic_loaders_produce_native`, `test_native_flatten_netlist`, `test_native_flatten_recursive_netlist`, `test_sax_flatten_netlist_dispatches_native`, `test_native_remove_unused_instances`, `test_native_rename_instances_and_models` |
-| Directed `forward` semantics preserved | `legacy_orientation` + `lower(orientation=...)`; legacy forward tests pass; `test_native_forward_backend_direction_blocker` xfail documents the native limitation |
+| Forward backend removed | `test_backend_selection.py`: explicit rejection, retained KLU/FG reconvergence |
 | Python compatibility | `kfnetlist>=0.3.0,<0.4.0` required; `requires-python = ">=3.12"` (all kfnetlist releases require 3.12); README and classifiers updated |
 | Package/lock validity | `uv lock`, `uv lock --check` pass |
 | Full regression | full `src/tests` incl. notebooks: 416 passed, 1 xfailed; `uv lock --check` passes |

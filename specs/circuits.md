@@ -76,6 +76,25 @@ Instance renaming updates both wiring formats without mutating input. Flattening
 is not a general hierarchical placement/settings composition API.
 Regression tests: `src/tests/test_netlist_transforms.py`.
 
+## Native model keys and API boundary
+
+Cell-specific `models[cell]` overrides precede qualified factory bindings
+`models["library::component"]`, followed by an exact bare factory binding when
+that factory appears in only one library in the supplied hierarchy. Conflicting
+bare bindings raise a diagnostic instead of silently selecting one library.
+No suffix stripping is performed; `coupler2` is an independent factory name.
+Explicit callable instances are instance-local bindings (adaptation coverage is
+tracked in `work.md`). Resolution then follows a concrete child `cell`, with
+exact component-name fallback for legacy/plain hierarchy input. Missing-model
+errors identify the instance path, library, factory, cell, and attempted keys.
+
+Native keys remain unchanged in dependency information. Backend discovery uses
+local identifier aliases so the existing lowered-table validators do not restrict
+qualified identities. This is backend-table validation, not canonical topology.
+Public `load_netlist`/`load_recursive_netlist` keep their dictionary returns;
+`native.load_*` are explicit native-object loaders. Root/document compatibility
+and user examples are covered by remediation stage 4.
+
 ## Evaluation and settings precedence
 
 Backend discovery evaluates component models with defaults, so defaults must be

@@ -42,7 +42,7 @@ supported. Optimization is performed with JAX-compatible objectives and tools;
 
 The dependency DAG describes **component definitions**, not the absence of optical
 feedback. A valid hierarchical definition can contain feedback in its port wiring.
-KLU and Filipsson-Gunnar solve such wiring; forward-only does not generally do so.
+KLU and Filipsson-Gunnar solve such wiring. The forward-only backend is removed.
 
 ## Compatibility boundary
 

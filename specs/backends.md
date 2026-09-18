@@ -25,7 +25,6 @@ Evidence: [`backends/__init__.py`](../src/sax/backends/__init__.py),
 | --- | --- | --- | --- |
 | `klu` | Sparse linear solve including feedback/reflections | `SDense` | Static sparse topology; KLU dependency; supports multiple links per endpoint |
 | `filipsson_gunnar` | Repeated pairwise multiport elimination | `SDict` | Each internal endpoint occurs only once |
-| `forward` | Directed, name-based graph propagation | `SDict` | `in*` to `out*` names, oriented connections, no general reflection/feedback solution |
 | `additive` | Enumerate simple paths and add edge values | Dictionary of path-value lists | Not an ordinary complex-amplitude scattering solver |
 
 ### KLU
@@ -46,7 +45,7 @@ S-values remain JAX arrays.
 Batch values broadcast to the joint NumPy/JAX-compatible batch shape, are flattened
 for solving, then reshaped back. Complementary `(N, 1)` and `(1, M)` sweeps yield
 `(N, M)`; incompatible shapes raise `ValueError`. This does not extend the same
-shape contract to the path-based additive/forward backends.
+shape contract to the path-based additive backend.
 Regression: `src/tests/test_backend_broadcasting.py` covers scalar/array mixtures,
 complementary/multiaxis shapes, KLU/FG agreement, JIT, and gradients.
 
@@ -63,23 +62,15 @@ Zero denominators/singular networks have no general regularization guarantee.
 
 Evidence: [`filipsson_gunnar.py`](../src/sax/backends/filipsson_gunnar.py),
 `_calculate_interconnected_value`. `_nets_to_connections_strict` rejects repeated
-endpoints for FG, forward, and additive.
+endpoints for FG and additive.
 
-### Forward-only
+### Removed forward backend
 
-Only component terms with input names starting `in` and output names starting
-`out` become directed edges. Only external `in*` ports are excited and external
-`out*` ports collected. Values are flattened. Connections have directional meaning
-here, unlike KLU/FG's bidirectional interconnects.
-
-Propagation visits nodes in topological order and accumulates all predecessor
-contributions, including unequal-depth reconvergent paths. Directed cycles raise
-`ValueError`. Optical `o*` naming does not automatically work with this backend.
-Regression: `src/tests/test_forward_backend.py` compares an unequal-depth fixture
-with KLU/FG, checks JIT/gradients, and verifies cycle rejection.
-
-Evidence: [`forward_only.py`](../src/sax/backends/forward_only.py),
-`_graph_edges_directed`, `evaluate_circuit_forward`.
+`forward` and its lower-level exports have been removed. Its reliance on endpoint
+ordering is incompatible with undirected native netlists. Use KLU or FG for
+scattering simulation; probe forward/backward wave measurements are unchanged.
+`test_backend_selection.py` verifies rejection and retains unequal-depth KLU/FG
+reconvergence, JIT, and gradient coverage.
 
 ### Additive
 
@@ -95,14 +86,13 @@ example [`06_additive_backend.md`](../docs/nbs/examples/06_additive_backend.md).
 ## Numerical verification boundary
 
 Use asymmetric fixtures to verify direction. Compare KLU/FG only where both support
-the topology; compare forward only within its restricted semantics. Test scalar and
+the topology. Test scalar and
 batch shapes, JIT, and a real-valued differentiated objective when changing numerical
 paths. Specify tolerances and dtype; do not require bitwise equality across solvers.
 Passivity, reciprocity, and power conservation are model-dependent, not universal
 assertions. Solver failure on a singular network is not evidence of a valid result.
 
-`test_backend_restrictions.py` verifies repeated-endpoint rejection for FG/forward/
-additive, KLU multi-link coefficients, and additive length sums rather than products.
+`test_backend_restrictions.py` verifies repeated-endpoint rejection for FG/additive, KLU multi-link coefficients, and additive length sums rather than products.
 
 Existing evidence: [`03_backends.ipynb`](../src/tests/nbs/03_backends.ipynb) compares
 KLU and FG within `1e-5`; [`test_probes.py`](../src/tests/test_probes.py) exercises

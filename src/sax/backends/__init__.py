@@ -16,11 +16,6 @@ from .filipsson_gunnar import (
     analyze_instances_fg,
     evaluate_circuit_fg,
 )
-from .forward_only import (
-    analyze_circuit_forward,
-    analyze_instances_forward,
-    evaluate_circuit_forward,
-)
 from .klu import (
     analyze_circuit_klu,
     analyze_instances_klu,
@@ -37,11 +32,6 @@ circuit_backends: dict[sax.Backend, tuple[Callable, Callable, Callable]] = {
         analyze_instances_additive,
         analyze_circuit_additive,
         evaluate_circuit_additive,
-    ),
-    "forward": (
-        analyze_instances_forward,
-        analyze_circuit_forward,
-        evaluate_circuit_forward,
     ),
     "klu": (
         analyze_instances_klu,
@@ -60,14 +50,11 @@ __all__ = [
     "analyze_circuit",
     "analyze_circuit_additive",
     "analyze_circuit_fg",
-    "analyze_circuit_forward",
     "analyze_instances",
     "analyze_instances_additive",
     "analyze_instances_fg",
-    "analyze_instances_forward",
     "circuit_backends",
     "evaluate_circuit",
     "evaluate_circuit_additive",
     "evaluate_circuit_fg",
-    "evaluate_circuit_forward",
 ]

@@ -37,8 +37,8 @@ sax.get_modes(sax.multimode(s))  # now ("TE", "TM")
 
 KLU now computes a joint broadcast shape, verified by `test_backend_broadcasting.py`;
 see [backends](backends.md).
-Forward BFS was replaced with topological accumulation; unequal-depth reconvergence,
-JIT/gradients, and cycle rejection are covered by `test_forward_backend.py`.
+The forward backend has since been removed. Unequal-depth KLU/FG reconvergence
+and JIT/gradients remain covered by `test_backend_selection.py`.
 
 ## Touchstone interoperability — resolved
 

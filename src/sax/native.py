@@ -117,7 +117,9 @@ def _scan_legacy_arrays(flat: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
     return sizes
 
 
-def _add_legacy_instance(nl: Netlist, name: str, inst: Any, sizes: Mapping[str, tuple[int, int]]) -> None:
+def _add_legacy_instance(
+    nl: Netlist, name: str, inst: Any, sizes: Mapping[str, tuple[int, int]]
+) -> None:
     if isinstance(inst, str):
         component, settings, info = inst, {}, {}
     elif isinstance(inst, Mapping):
@@ -154,7 +156,7 @@ def _native_member(endpoint: str) -> NetlistPort | PortRef | PortArrayRef:
 def from_legacy_flat(flat: Mapping[str, Any]) -> Netlist:
     """Adapt one legacy SAX flat netlist into a native kfnetlist netlist."""
     nl = Netlist()
-    for name in (flat.get("ports") or {}):
+    for name in flat.get("ports") or {}:
         nl.create_port(str(name))
     sizes = _scan_legacy_arrays(flat)
     for name, inst in (flat.get("instances") or {}).items():
@@ -186,38 +188,19 @@ def _looks_native(data: Mapping[str, Any]) -> bool:
     )
 
 
-def legacy_orientation(flat: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """Directed endpoint pairs declared by a legacy flat netlist.
-
-    kfnetlist nets are undirected; this preserves the signal direction that the
-    legacy ``connections``/``nets`` encoding carried so directed backends (the
-    ``forward`` backend) remain correct.
-    """
-    pairs: list[tuple[str, str]] = []
-    for src, tgt in (flat.get("connections") or {}).items():
-        pairs.append((str(src), str(tgt)))
-    for net in flat.get("nets") or []:
-        pairs.append((str(net["p1"]), str(net["p2"])))
-    return pairs
-
-
 def to_hierarchy(
     netlist: object,
     *,
     top_level_name: str = "top_level",
-) -> tuple[NativeHierarchy, str, dict[str, list[tuple[str, str]]]]:
-    """Normalize supported input into ``(cells, root, orientations)``.
-
-    ``orientations`` records directed endpoint pairs that native unordered nets
-    cannot represent; it is populated only for legacy/dict input.
-    """
+) -> tuple[NativeHierarchy, str]:
+    """Normalize supported input into ``(cells, root)``."""
     if is_native(netlist):
-        return {top_level_name: netlist}, top_level_name, {}
+        return {top_level_name: netlist}, top_level_name
 
     if is_native_hierarchy(netlist):
         cells = dict(netlist)
         root = top_level_name if top_level_name in cells else next(iter(cells))
-        return cells, root, {}
+        return cells, root
 
     if isinstance(netlist, str):
         try:
@@ -231,15 +214,13 @@ def to_hierarchy(
         data = dict(netlist)
         if "instances" in data:
             if _looks_native(data):
-                return {top_level_name: Netlist.from_dict(data)}, top_level_name, {}
+                return {top_level_name: Netlist.from_dict(data)}, top_level_name
             return (
                 {top_level_name: from_legacy_flat(data)},
                 top_level_name,
-                {top_level_name: legacy_orientation(data)},
             )
 
         cells: NativeHierarchy = {}
-        orientations: dict[str, list[tuple[str, str]]] = {}
         for name, flat in data.items():
             key = str(name)
             if isinstance(flat, Netlist):
@@ -248,12 +229,11 @@ def to_hierarchy(
                 cells[key] = Netlist.from_dict(dict(flat))
             elif isinstance(flat, Mapping):
                 cells[key] = from_legacy_flat(flat)
-                orientations[key] = legacy_orientation(flat)
             else:
                 msg = f"Unsupported netlist entry {name!r}: {type(flat)}."
                 raise TypeError(msg)
         root = top_level_name if top_level_name in cells else next(iter(cells))
-        return cells, root, orientations
+        return cells, root
 
     msg = f"Cannot interpret {type(netlist)} as a netlist."
     raise TypeError(msg)
@@ -272,20 +252,13 @@ def _expanded_name(name: str, i: int, j: int, na: int, nb: int) -> str:
 
 def lower(
     nl: Netlist,
-    orientation: list[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str]]:
     """Lower a native netlist to ``(instances, nets, ports)`` tables.
 
     These flat tables are the compiled input to the numerical backends, not a
     canonical netlist representation. Array instances are expanded to
     ``name<column.row>`` entries (zero-based), matching SAX instance naming.
-
-    ``orientation`` supplies directed endpoint pairs for nets whose direction
-    native unordered nets cannot carry (used by the ``forward`` backend).
     """
-    directed: dict[frozenset[str], tuple[str, str]] = {
-        frozenset((a, b)): (a, b) for a, b in (orientation or [])
-    }
     instances: dict[str, dict[str, Any]] = {}
     array_sizes: dict[str, tuple[int, int]] = {}
     for name, inst in nl.instances.items():
@@ -330,11 +303,7 @@ def lower(
             if external.name in declared and endpoints:
                 ports[external.name] = endpoints[0]
         for a, b in zip(endpoints, endpoints[1:]):
-            hint = directed.get(frozenset((a, b)))
-            if hint is not None:
-                nets.append({"p1": hint[0], "p2": hint[1]})
-            else:
-                nets.append({"p1": a, "p2": b})
+            nets.append({"p1": a, "p2": b})
     return instances, nets, ports
 
 
@@ -353,13 +322,47 @@ def resolve(
     cell = getattr(inst, "cell", None)
     if cell is not None and cell in models:
         return cell
+    library = inst.kcl
+    qualified = f"{library}::{component}"
+    if library and qualified in models:
+        return qualified
     if component in models:
+        libraries = {
+            other.kcl
+            for nl in cells.values()
+            for other in nl.instances.values()
+            if other.component == component
+        }
+        if len(libraries) > 1:
+            msg = (
+                f"Ambiguous factory model {component!r} across libraries "
+                f"{sorted(libraries)!r}; supply library::component bindings "
+                "or explicit cell overrides."
+            )
+            raise ValueError(msg)
         return component
     if cell is not None and cell in cells:
         return cell
     if component in cells:
         return component
     return None
+
+
+def missing_model_message(inst: Any, path: str) -> str:  # noqa: ANN401
+    """Describe the identities and lookups of an unresolved instance."""
+    cell = getattr(inst, "cell", None)
+    qualified = f"{inst.kcl}::{inst.component}"
+    attempts = [
+        f"models[{cell!r}]",
+        f"models[{qualified!r}]",
+        f"models[{inst.component!r}]",
+        f"cells[{cell!r}]",
+        f"cells[{inst.component!r}]",
+    ]
+    return (
+        f"Missing models at {path!r}: factory={inst.component!r}, "
+        f"library={inst.kcl!r}, cell={cell!r}. Tried {', '.join(attempts)}."
+    )
 
 
 def copy_netlist(nl: Netlist) -> Netlist:
@@ -371,10 +374,14 @@ def lower_bindings(
     nl: Netlist,
     models: Mapping[str, Any],
     cells: Mapping[str, Any],
-    orientation: list[tuple[str, str]] | None = None,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, str], dict[str, str | None]]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    list[dict[str, str]],
+    dict[str, str],
+    dict[str, str | None],
+]:
     """Lower *nl* and resolve every expanded instance to a model/cell key."""
-    instances, nets, ports = lower(nl, orientation)
+    instances, nets, ports = lower(nl)
     bindings: dict[str, str | None] = {}
     for name, inst in nl.instances.items():
         arr = inst.array
@@ -571,7 +578,9 @@ def load_pic_yaml(
     if "modules" in data:
         modules = data["modules"]
         toplevel = data.get("toplevel")
-        cells = {str(name): from_legacy_flat(module) for name, module in modules.items()}
+        cells = {
+            str(name): from_legacy_flat(module) for name, module in modules.items()
+        }
         if toplevel is None:
             toplevel = next(iter(cells))
         if toplevel not in cells:
@@ -721,11 +730,7 @@ def remove_unused_instances(nl: Netlist) -> Netlist:
     for node in roots:
         keep |= nx.descendants(graph, node)
     base_keep = {name.split("<")[0] for name in keep}
-    remove = [
-        base
-        for base in _base_instance_names(nl)
-        if base not in base_keep
-    ]
+    remove = [base for base in _base_instance_names(nl) if base not in base_keep]
     result = copy_netlist(nl)
     if remove:
         result.remove_instances(remove)
@@ -736,9 +741,7 @@ def _base_instance_names(nl: Netlist) -> list[str]:
     return list(nl.instances)
 
 
-def rename_instances(
-    nl: Netlist, mapping: Mapping[str, str]
-) -> Netlist:
+def rename_instances(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
     """Return a native copy with instances renamed by *mapping*."""
     d = nl.to_dict()
     instances = {}

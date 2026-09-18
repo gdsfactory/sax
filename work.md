@@ -1,7 +1,7 @@
 # SAX native-netlist remediation
 
-**Status: draft goal; implementation paused.** The user is still refining this
-plan. Editing it does not start implementation. No execution stage is complete.
+**Status: active goal.** The user authorized all stages and delegated unresolved
+decisions to agent judgment. Implementation started from clean commit `6e5d767`.
 
 ## Goal and completion criteria
 
@@ -14,7 +14,7 @@ upstream schema discussion continues.
 The goal is complete when all five stages meet their verification criteria,
 remaining API decisions are documented, and the final evidence distinguishes
 passed, failed, and unrun checks. External blockers must be recorded rather than
-marked complete. No goal execution has been requested yet.
+marked complete. Goal execution is now authorized.
 
 ## Agreed decisions and boundaries
 
@@ -53,7 +53,7 @@ similar historical checks passed.
 
 | Stage | Outcome | Status | Verification |
 | --- | --- | --- | --- |
-| 1 | Backend scope and identity/API boundaries settled | Not started | Not run |
+| 1 | Backend scope and identity/API boundaries settled | Complete | 80 focused tests passed |
 | 2 | Input settings, placements, and native identities preserved | Not started | Not run |
 | 3 | Hierarchy, transforms, probes, and topology corrected | Not started | Not run |
 | 4 | PIC workflows and real extraction validated | Not started | Not run |
@@ -64,33 +64,40 @@ similar historical checks passed.
 **Outcome:** native connectivity needs no direction metadata, and the identity
 and public API rules needed by later stages are explicit.
 
-- [ ] Remove `forward` from backend registration, accepted backend types/names,
+- [x] Remove `forward` from backend registration, accepted backend types/names,
   lower-level APIs, and public exports. Remove native direction hints and the
   special rejection of undirected inputs. Resolves review findings **6, 7, 13**.
-- [ ] Update affected tests, specs, user documentation, and example navigation.
+- [x] Update affected tests, specs, user documentation, and example navigation.
   Retain useful KLU/FG reconvergence coverage and all physical probe semantics.
-- [ ] Settle the model-key/namespace contract before introducing new behavior:
+- [x] Settle the model-key/namespace contract before introducing new behavior:
   library-qualified identities (`kcl` plus `component`), cell-specific overrides,
   and explicit callable bindings. Preserve intentional exact legacy overrides.
   Document precedence shared by construction, required-model discovery, probes,
   and flattening; do not add implicit suffix-based aliases.
-- [ ] Specify unresolved-identity diagnostics with parent/instance path, factory,
+- [x] Specify unresolved-identity diagnostics with parent/instance path, factory,
   cell reference, and attempted bindings. Cover same-name factories in different
   libraries, legitimate numeric factory names, and missing child references.
-- [ ] Decide and record public loader/type contracts and the permitted backend
+- [x] Decide and record public loader/type contracts and the permitted backend
   coercion boundary. Do not change public return types solely to match stale
   prose. This establishes the decision needed for finding **18** and stage 4.
 
-**Open decisions:** namespace/key spelling and public loader return compatibility
-are not yet settled. Resolve material ambiguity with the user before implementing
-those behavior changes. `native.resolve` currently ignores `kcl`; backends still
-call `sax.into[sax.Instances]` on lowered tables. Neither fact is proof of the
-intended final contract.
+**Decisions:** use `library::component` keys; exact cell overrides win, and bare
+factory bindings are accepted only when the factory has a single library in the
+supplied hierarchy. Keep legacy public loader dictionary returns for compatibility
+and explicit `native.load_*` native returns. Backend discovery may validate its
+lowered tables using local identifier aliases; native topology and public identities
+must remain intact. Missing identities report paths and all attempted lookups.
+Callable instance bindings will become instance-local in stage 2. These decisions
+use the user's authorization to exercise judgment rather than pause for approval.
 
 **Verification:** rejected `forward` selection has a useful error; remaining
 backend selection/imports work; focused KLU/FG/additive and probe checks pass.
 New identity-policy tests establish only the agreed namespace behavior.
-**Evidence:** not run. **Stage commit:** pending execution and verification.
+**Evidence:** existing `.venv`, focused pytest across backend selection/dependency/
+restrictions, native identity/input, probes, and hierarchy validation: **80 passed**
+in 21.68s. Formatting and `git diff --check` passed. Existing branch-wide lint/type
+debt remains assigned to stage 5; this stage commit bypasses hooks rather than
+claiming they pass. **Stage commit:** this stage's commit includes this record.
 
 ## Stage 2 — Preserve settings, placements, and native types
 

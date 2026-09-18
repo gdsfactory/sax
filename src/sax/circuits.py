@@ -101,7 +101,7 @@ def circuit(
         models: Dictionary mapping component names to their model functions.
             If None, models must be provided in the netlist itself.
         backend: Circuit analysis backend to use. Options include "default",
-            "klu", "filipsson_gunnar", "additive", "forward". Defaults to "default".
+            "klu", "filipsson_gunnar", "additive". Defaults to "default".
         return_type: Format of the returned S-matrix. Options: "SDict", "SDense",
             "SCoo". Defaults to "SDict".
         top_level_name: Name of the top-level circuit in recursive netlists.
@@ -204,22 +204,29 @@ def _native_dag(
     cells: native.NativeHierarchy,
     root: str,
     models: sax.Models,
+    *,
+    require_models: bool = False,
 ) -> nx.DiGraph:
     g = nx.DiGraph()
-    for cell_name in cells:
+    pending = [(root, root)]
+    visited: set[str] = set()
+    while pending:
+        cell_name, path = pending.pop()
         g.add_node(cell_name)
-    for cell_name, nl in cells.items():
-        if cell_name in models:
+        if cell_name in visited or cell_name in models:
             continue
-        g.add_node(cell_name)
-        for inst in nl.instances.values():
+        visited.add(cell_name)
+        for name, inst in cells[cell_name].instances.items():
             key = native.resolve(inst, models, cells)
             if key is None:
+                if require_models:
+                    raise ValueError(
+                        native.missing_model_message(inst, f"{path}.{name}")
+                    )
                 key = inst.component
-            g.add_node(key)
             g.add_edge(cell_name, key)
-    nodes = [root, *nx.descendants(g, root)]
-    g = cast(nx.DiGraph, nx.induced_subgraph(g, nodes))
+            if key in cells and key not in models:
+                pending.append((key, f"{path}.{name}"))
     return _validate_dag(g)
 
 
@@ -234,27 +241,11 @@ def _circuit_native(
     probes: dict[str, str] | None,
     on_internal_port: Literal["warn", "ignore", "as_probes"],
 ) -> tuple[sax.Model, sax.CircuitInfo]:
-    cells, root, orientations = native.to_hierarchy(
-        netlist, top_level_name=top_level_name
-    )
+    cells, root = native.to_hierarchy(netlist, top_level_name=top_level_name)
 
     models = dict(models or {})
-    dependency_dag = _native_dag(cells, root, models)
+    dependency_dag = _native_dag(cells, root, models, require_models=True)
     models = _validate_models(models, dependency_dag)
-
-    if backend == "forward" and not orientations:
-        internal = [
-            name
-            for name, nl in cells.items()
-            if nl.nets and name in cells
-        ]
-        if internal:
-            msg = (
-                "The forward backend needs directed connections, but native "
-                "kfnetlist nets are undirected and this input carries no "
-                "orientation. Legacy dictionaries/`.pic.yml` retain direction."
-            )
-            raise ValueError(msg)
 
     top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
         cells, root, models, probes or {}
@@ -292,9 +283,7 @@ def _circuit_native(
         current_models |= new_models
         new_models = {}
         nl = cells[model_name]
-        instances, nets, ports, bindings = native.lower_bindings(
-            nl, models, cells, orientations.get(model_name)
-        )
+        instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
         for name, inst in instances.items():
             key = bindings.get(name)
             if key is None:
@@ -418,7 +407,7 @@ def get_required_circuit_models(
     """
     instance_models = _extract_instance_models(netlist)
     prepared = _replace_callable_instances(netlist)
-    cells, root, _ = native.to_hierarchy(prepared, top_level_name=top_level_name)
+    cells, root = native.to_hierarchy(prepared, top_level_name=top_level_name)
     merged: sax.Models = {**(models or {}), **instance_models}
     dependency_dag = _native_dag(cells, root, merged)
     _, required, _ = _find_missing_models(merged, dependency_dag)
@@ -437,7 +426,20 @@ def _flat_circuit(
     ignore_impossible_connections: bool = False,
 ) -> sax.Model:
     analyze_insts_fn, analyze_fn, evaluate_fn = circuit_backends[backend]
-    dummy_instances = analyze_insts_fn(instances, models)
+    # Backend discovery validates legacy component identifiers. Native model/cell
+    # identities may contain library separators, so give that boundary local IDs.
+    model_ids = {
+        component: f"_model_{i}"
+        for i, component in enumerate(
+            dict.fromkeys(inst["component"] for inst in instances.values())
+        )
+    }
+    analysis_instances = {
+        name: {**inst, "component": model_ids[inst["component"]]}
+        for name, inst in instances.items()
+    }
+    analysis_models = {model_ids[key]: models[key] for key in model_ids}
+    dummy_instances = analyze_insts_fn(analysis_instances, analysis_models)
     inst_port_mode = {
         k: _port_modes_dict(get_ports(s)) for k, s in dummy_instances.items()
     }

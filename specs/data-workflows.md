@@ -15,11 +15,9 @@
 
 `sax.circuit` builds every circuit through the native kfnetlist path:
 `native.to_hierarchy` adapts legacy dictionaries, `.pic.yml`/native JSON, and
-native objects into `{cell: Netlist}` plus an optional directed-orientation map,
+native objects into `{cell: Netlist}` plus an explicit root,
 and `_circuit_native` lowers them to backend tables. Native input is never turned
-into SAX's legacy dictionary schema for construction. Directed legacy
-`connections` become `legacy_orientation` hints so the `forward` backend keeps
-signal direction; native input without direction raises for that backend. Factory
+into SAX's legacy dictionary schema for construction. The forward backend and direction hints have been removed. Factory
 `component` models are resolved before descending into a distinct
 `PlacedInstance.cell`.
 
