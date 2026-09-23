@@ -1,83 +1,52 @@
 # Native netlists and migration
 
-SAX accepts `kfnetlist.Netlist`, `PlacedNetlist`, native dictionaries/JSON, and
-legacy SAX dictionaries. Circuit construction uses native topology for all inputs.
-Python 3.12 or newer and kfnetlist 0.3.x are required.
+SAX's development path uses plain `kfnetlist.Netlist` objects. A document is a
+mapping from IDs to netlists. An instance's `component` names its factory/model;
+`netlist_id` names a child definition when one is included. The two IDs can differ.
+SAX requires Python 3.12+ and currently resolves kfnetlist from its Git `main`
+branch through `uv.lock`. This contract is under development and is not tied to
+a published kfnetlist version.
 
-## Extract a layout without losing hierarchy identity
-
-Use `include_placement=True` when extracting a hierarchical layout. A placed
-instance preserves two separate identities: `component` identifies its factory,
-and `cell` references its concrete child netlist. Placement coordinates need not
-influence your analytical model.
-
-This runnable example extracts two parameterizations of one factory. Both receive
-the same analytical model with their own lengths:
+## Build and simulate a referenced hierarchy
 
 ```python
-import gdsfactory as gf
-import jax.numpy as jnp
-import kfactory as kf
-import numpy as np
-from kfnetlist.extract import extract
-
+import kfnetlist as kfn
 import sax
 
-gf.gpdk.PDK.activate()
-top = gf.Component()
-for name, length, y in (("a", 10.0, 0.0), ("b", 20.0, 30.0)):
-    inst = top << gf.components.straight(length=length)
-    inst.name = name
-    inst.dmovey(y)
-    top.add_port(name + "_in", port=inst.ports["o1"])
-    top.add_port(name + "_out", port=inst.ports["o2"])
+child = kfn.Netlist()
+child.create_inst("wg", "pdk", "waveguide", {"gain": 3.0})
+child.create_port("in")
+child.create_port("out")
+child.create_net(kfn.NetlistPort(name="in"), kfn.PortRef("wg", "in"))
+child.create_net(kfn.PortRef("wg", "out"), kfn.NetlistPort(name="out"))
 
-cells = extract(
-    top,
-    wrap_kdb_instance=lambda inst: kf.Instance(kcl=top.kcl, instance=inst),
-    include_placement=True,
+top = kfn.Netlist()
+top.create_inst("arm", "pdk", "make_arm", netlist_id="arm_3")
+top.create_port("in")
+top.create_port("out")
+top.create_net(kfn.NetlistPort(name="in"), kfn.PortRef("arm", "in"))
+top.create_net(kfn.PortRef("arm", "out"), kfn.NetlistPort(name="out"))
+
+model, info = sax.circuit(
+    {"top_level": top, "arm_3": child},
+    {"waveguide": lambda gain=1.0: {("in", "out"): gain}},
 )
-
-
-def straight(length=10.0, wl=1.55):
-    phase = 2 * jnp.pi * 2.4 * length / wl
-    return sax.reciprocal({("o1", "o2"): jnp.exp(1j * phase)})
-
-
-factory = cells[top.name].instances["a"].component
-model, info = sax.circuit(cells, {factory: straight}, top_level_name=top.name)
-result = model(wl=1.55)
-np.testing.assert_allclose(result["a_in", "a_out"], jnp.exp(2j * jnp.pi * 2.4 * 10 / 1.55))
-np.testing.assert_allclose(result["b_in", "b_out"], jnp.exp(2j * jnp.pi * 2.4 * 20 / 1.55))
+result = model()
 ```
 
-A model replaces the whole instance; models for its layout children are unnecessary.
-Without that model, SAX follows `instance.cell` to the child definition. Distinct
-parameterized children therefore remain distinct. Probing inside an analytically
-replaced subtree raises an error; supply its child models to simulate that subtree.
+A model for `make_arm` replaces the whole referenced instance; otherwise SAX
+traverses `arm_3`. `models["arm_3"]` can override that particular child. The
+reference must point to a netlist in the document; kfnetlist validates this and
+rejects cycles. Plain `Netlist` objects carry no placement. The upstream
+extraction producer must emit explicit references for SAX to traverse an
+extracted hierarchy in this development pass.
 
-## Model lookup and overrides
+## Model lookup
 
-Lookup order is an exact `models[instance.cell]` override, a qualified
-`models["library::component"]` binding, then a bare `models[instance.component]`
-binding when the factory occurs in only one library in the supplied hierarchy.
-If no model matches, SAX follows the explicit cell reference, then an exact
-hierarchy key matching `component`. Errors list the instance path and attempted
-identities. Names are never inferred by stripping numeric suffixes.
-
-For old exports that have lost factory provenance, use an explicit alias only
-when you know that two names represent the same factory:
-
-```python
-models = {"straight": straight, "straight2": straight}
-```
-
-Use `models[cell_name]` when one concrete child needs a specialized model. Direct
-callable instances and keyword partials remain supported in legacy dictionaries;
-separate partials retain independent defaults. Positional partial arguments are
-rejected. Non-JSON NumPy/JAX/complex settings stay in SAX's numerical settings
-tables; native serialization itself still requires JSON-compatible values.
-Legacy instance `info` overrides `settings`; native `info` remains metadata.
+Lookup order is an exact `models[instance.netlist_id]` override when present,
+then `models["library::component"]`, then bare `models[component]` when
+unambiguous. If no model matches, SAX follows `netlist_id`. Leaf instances require
+a model. SAX does not infer children from factory names.
 
 ## PIC loaders and roots
 
@@ -122,14 +91,9 @@ Native copy/rename/prune/flatten operations preserve caller input. Use
 analytical model boundaries. SAX currently implements copying and per-instance
 flatten selection through small helpers pending equivalent upstream support.
 
-## Installation verification
+## Development dependency
 
-On 2026-09-18, dependency resolution passed for Python 3.12, 3.13, and 3.14 on
-macOS ARM64, Linux x86-64/ARM64, and Windows x86-64. These are package-resolution
-checks; runtime tests were run on macOS ARM64 with Python 3.12.14.
-
-Intel macOS could not resolve SAX's required klujax dependency. Native Windows
-ARM64 could not resolve kfnetlist. The kfnetlist 0.3.0 release provides wheels for
-macOS ARM64/x86-64, Linux ARM64/x86-64, and Windows x86-64:
-https://pypi.org/project/kfnetlist/0.3.0/ . A kfnetlist wheel alone does not establish
-that every SAX dependency supports a platform.
+`pyproject.toml` resolves kfnetlist from its `main` branch. `uv.lock` records the
+specific commit used for a reproducible development environment. Refresh the
+lockfile when intentionally testing a newer `main` revision. The earlier wheel
+platform checks apply to the published 0.3.0 package, not to this Git build.

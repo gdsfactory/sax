@@ -195,3 +195,6 @@ convention = "google"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.sources]
+kfnetlist = { git = "https://github.com/gdsfactory/kfnetlist.git", branch = "main" }

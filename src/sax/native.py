@@ -9,17 +9,16 @@ Two hierarchy identities are kept distinct:
 
 * ``component`` is the factory / analytical-model name shared by every
   parameterization of a cell.
-* ``PlacedInstance.cell`` is the concrete instantiated cell and is used to look
-  up child netlists when no analytical model replaces the instance.
+* ``netlist_id`` is the document-local child netlist reference. It is used when
+  no analytical model replaces the instance.
 
-Model resolution precedence (see ``specs/changes/kfnetlist-canonical.md``):
+Model resolution precedence (see ``specs/changes/plain-netlist-references.md``):
 
-1. explicit cell-specific model (``models[cell]``),
+1. explicit reference-specific model (``models[netlist_id]``),
 2. library-qualified factory model (``models["library::component"]``),
 3. exact bare factory model (``models[component]``), if unambiguous,
-4. recurse via the instantiated cell reference (``cells[cell]``),
-5. recurse via a cell whose name equals the factory name,
-6. otherwise the instance is missing a model.
+4. recurse via ``cells[netlist_id]`` when the instance has a reference,
+5. otherwise the instance is missing a model.
 """
 
 from __future__ import annotations
@@ -28,19 +27,19 @@ import json
 import re
 from collections.abc import Mapping
 from itertools import pairwise
-from typing import Any, TypeGuard, TypeVar
+from typing import Any, TypeGuard
 
 from kfnetlist import (
     Netlist,
     NetlistInstance,
     NetlistPort,
-    PlacedNetlist,
-    Placement,
     PortArrayRef,
     PortRef,
+    RefNetlistInstance,
+    validate_hierarchy,
 )
 
-from .saxtypes.netlist import Instance, Instances, Nets, val_placement
+from .saxtypes.netlist import Instance, Instances, Nets
 
 __all__ = [
     "NativeHierarchy",
@@ -51,15 +50,12 @@ __all__ = [
     "is_native_hierarchy",
     "lower",
     "lower_bindings",
-    "placements",
     "resolve",
     "to_hierarchy",
 ]
 
-NetlistT = TypeVar("NetlistT", bound=Netlist)
-
 NativeHierarchy = dict[str, Netlist]
-"""Mapping of cell name to native kfnetlist netlist (SAX's canonical hierarchy)."""
+"""Mapping of document-local IDs to plain kfnetlist netlists."""
 
 InstanceSettings = dict[str, dict[str, Any]]
 HierarchySettings = dict[str, InstanceSettings]
@@ -67,14 +63,14 @@ HierarchySettings = dict[str, InstanceSettings]
 
 def is_native(obj: object) -> TypeGuard[Netlist]:
     """Return whether *obj* is a native kfnetlist netlist object."""
-    return isinstance(obj, Netlist)
+    return type(obj) is Netlist
 
 
 def is_native_hierarchy(obj: object) -> TypeGuard[Mapping[str, Netlist]]:
     """Return whether *obj* is a native ``{cell name: Netlist}`` mapping."""
     if not isinstance(obj, Mapping) or not obj:
         return False
-    return all(isinstance(k, str) and isinstance(v, Netlist) for k, v in obj.items())
+    return all(isinstance(k, str) and type(v) is Netlist for k, v in obj.items())
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +130,6 @@ def _add_legacy_instance(
     name: str,
     inst: object,
     sizes: Mapping[str, tuple[int, int]],
-    placement: Mapping[str, Any],
     settings_table: InstanceSettings | None,
 ) -> None:
     if isinstance(inst, str):
@@ -154,38 +149,15 @@ def _add_legacy_instance(
     if settings_table is not None:
         settings_table[name] = settings
         settings, info = {}, {}
-    if isinstance(nl, PlacedNetlist):
-        normalized = val_placement(placement)
-        cell = (
-            str(inst.get("cell", component)) if isinstance(inst, Mapping) else component
-        )
-        nl.create_inst(
-            name,
-            kcl="",
-            component=component,
-            settings=settings,
-            na=na,
-            nb=nb,
-            info=info,
-            cell=cell,
-            placement=Placement(
-                x=normalized["x"],
-                y=normalized["y"],
-                orientation=float(normalized["rotation"]),
-                mirror=normalized["mirror"],
-                bbox={"left": 0.0, "bottom": 0.0, "right": 0.0, "top": 0.0},
-            ),
-        )
-    else:
-        nl.create_inst(
-            name,
-            kcl="",
-            component=component,
-            settings=settings,
-            na=na,
-            nb=nb,
-            info=info,
-        )
+    nl.create_inst(
+        name,
+        kcl="",
+        component=component,
+        settings=settings,
+        na=na,
+        nb=nb,
+        info=info,
+    )
 
 
 def _native_member(endpoint: str) -> NetlistPort | PortRef | PortArrayRef:
@@ -203,11 +175,7 @@ def from_legacy_flat(
     settings_table: InstanceSettings | None = None,
 ) -> Netlist:
     """Adapt one legacy SAX flat netlist into a native kfnetlist netlist."""
-    placed = bool(flat.get("placements")) or any(
-        isinstance(inst, Mapping) and "cell" in inst
-        for inst in flat.get("instances", {}).values()
-    )
-    nl = PlacedNetlist() if placed else Netlist()
+    nl = Netlist()
     for name in flat.get("ports") or {}:
         nl.create_port(str(name))
     sizes = _scan_legacy_arrays(flat)
@@ -217,7 +185,6 @@ def from_legacy_flat(
             str(name),
             inst,
             sizes,
-            (flat.get("placements") or {}).get(name, {}),
             settings_table,
         )
     for src, tgt in (flat.get("connections") or {}).items():
@@ -250,13 +217,8 @@ def _looks_native(data: Mapping[str, Any]) -> bool:
 
 
 def deserialize_netlist(data: Mapping[str, Any]) -> Netlist:
-    """Decode native data without dropping placed-instance identity/geometry."""
-    placed = any(
-        "cell" in inst or "placement" in inst
-        for inst in data.get("instances", {}).values()
-    )
-    factory = PlacedNetlist if placed else Netlist
-    return factory.from_dict(dict(data))
+    """Decode a plain native netlist."""
+    return Netlist.from_dict(dict(data))
 
 
 def to_hierarchy(
@@ -268,10 +230,13 @@ def to_hierarchy(
     """Normalize supported input into ``(cells, root)``."""
     flat_name = top_level_name if top_level_name is not None else "top_level"
     if is_native(netlist):
-        return {flat_name: netlist}, flat_name
+        cells = {flat_name: netlist}
+        validate_hierarchy(cells)
+        return cells, flat_name
 
     if is_native_hierarchy(netlist):
         cells = dict(netlist)
+        validate_hierarchy(cells)
         root = _select_root(cells, top_level_name)
         return cells, root
 
@@ -288,7 +253,9 @@ def to_hierarchy(
         )
 
     if isinstance(netlist, Mapping):
-        return _mapping_hierarchy(netlist, top_level_name, settings_table)
+        cells, root = _mapping_hierarchy(netlist, top_level_name, settings_table)
+        validate_hierarchy(cells)
+        return cells, root
     msg = f"Cannot interpret {type(netlist)} as a netlist."
     raise TypeError(msg)
 
@@ -355,7 +322,7 @@ def _mapping_hierarchy(
     cells: NativeHierarchy = {}
     for name, flat in data.items():
         key = str(name)
-        if isinstance(flat, Netlist):
+        if type(flat) is Netlist:
             cells[key] = flat
         elif isinstance(flat, Mapping):
             cells[key] = _adapt_cell(flat, key, settings_table)
@@ -494,7 +461,7 @@ def resolve(
     models = models or {}
     cells = cells or {}
     component = inst.component
-    cell = getattr(inst, "cell", None)
+    cell = inst.netlist_id if isinstance(inst, RefNetlistInstance) else None
     if cell is not None and cell in models:
         return cell
     library = inst.kcl
@@ -518,31 +485,28 @@ def resolve(
         return component
     if cell is not None and cell in cells:
         return cell
-    if component in cells:
-        return component
     return None
 
 
 def missing_model_message(inst: NetlistInstance, path: str) -> str:
     """Describe the identities and lookups of an unresolved instance."""
-    cell = getattr(inst, "cell", None)
+    cell = inst.netlist_id if isinstance(inst, RefNetlistInstance) else None
     qualified = f"{inst.kcl}::{inst.component}"
     attempts = [
-        f"models[{cell!r}]",
+        *([f"models[{cell!r}]"] if cell is not None else []),
         f"models[{qualified!r}]",
         f"models[{inst.component!r}]",
-        f"cells[{cell!r}]",
-        f"cells[{inst.component!r}]",
+        *([f"cells[{cell!r}]"] if cell is not None else []),
     ]
     return (
         f"Missing models at {path!r}: factory={inst.component!r}, "
-        f"library={inst.kcl!r}, cell={cell!r}. Tried {', '.join(attempts)}."
+        f"library={inst.kcl!r}, netlist_id={cell!r}. Tried {', '.join(attempts)}."
     )
 
 
-def copy_netlist(nl: NetlistT) -> NetlistT:
+def copy_netlist(nl: Netlist) -> Netlist:
     """Return an independent native copy of *nl*."""
-    return type(nl).from_dict(nl.to_dict())
+    return Netlist.from_dict(nl.to_dict())
 
 
 def lower_bindings(
@@ -567,22 +531,6 @@ def lower_bindings(
             for j in range(nb):
                 bindings[_expanded_name(name, i, j, na, nb)] = key
     return instances, nets, ports, bindings
-
-
-def placements(nl: Netlist) -> dict[str, dict[str, Any]]:
-    """Extract legacy-shaped placement settings from a placed netlist."""
-    result: dict[str, dict[str, Any]] = {}
-    for name, inst in nl.instances.items():
-        placement = getattr(inst, "placement", None)
-        if placement is None:
-            continue
-        result[name] = {
-            "x": float(placement.x),
-            "y": float(placement.y),
-            "rotation": float(placement.orientation),
-            "mirror": bool(placement.mirror),
-        }
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -857,7 +805,7 @@ def load_native_netlist(content_or_path: object) -> Netlist:
     """Load a single native netlist; use ``load_pic_yaml`` for a hierarchy."""
     from pathlib import Path
 
-    if isinstance(content_or_path, Netlist):
+    if type(content_or_path) is Netlist:
         return content_or_path
     if isinstance(content_or_path, Mapping):
         content = content_or_path
@@ -922,7 +870,7 @@ def hierarchy_cell_maps(
     cells: Mapping[str, Netlist],
     models: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, str]]:
-    """Build kfnetlist ``instance -> cell`` maps from a native hierarchy."""
+    """Build selective ``instance -> netlist_id`` maps for flattening."""
     models = models or {}
     maps: dict[str, dict[str, str]] = {}
     opaque = "_sax_opaque_model"
@@ -933,7 +881,6 @@ def hierarchy_cell_maps(
         for name, inst in nl.instances.items():
             key = resolve(inst, models, cells)
             if key in models:
-                # Explicit maps override PlacedInstance.cell during flattening.
                 # A deliberately absent target leaves this instance untouched.
                 entry[name] = opaque
             elif key is not None and key in cells:
@@ -1030,13 +977,7 @@ def rename_instances(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
         for member in net:
             if isinstance(member, dict) and "instance" in member:
                 member["instance"] = mapping.get(member["instance"], member["instance"])
-    placements = d.get("placements")
-    if isinstance(placements, dict):
-        d["placements"] = {
-            mapping.get(name, name): value for name, value in placements.items()
-        }
-    factory = PlacedNetlist if isinstance(nl, PlacedNetlist) else Netlist
-    return factory.from_dict(d)
+    return Netlist.from_dict(d)
 
 
 def rename_models(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
@@ -1045,5 +986,4 @@ def rename_models(nl: Netlist, mapping: Mapping[str, str]) -> Netlist:
     for inst in d.get("instances", {}).values():
         if isinstance(inst, dict) and "component" in inst:
             inst["component"] = mapping.get(inst["component"], inst["component"])
-    factory = PlacedNetlist if isinstance(nl, PlacedNetlist) else Netlist
-    return factory.from_dict(d)
+    return Netlist.from_dict(d)

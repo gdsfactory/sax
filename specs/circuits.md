@@ -25,8 +25,8 @@ net = {
   combines both. Net metadata is not a modeled transmission element.
 - Route bundles with `links` normalize into nets. Unrecognized netlist fields are
   filtered by the schema; this is not lossless round-trip storage for layout data.
-- Placements normalize x/dx, y/dy, rotation rounded modulo 360, and mirror. They
-  reach models only through supported `placement` settings.
+- The plain native path currently ignores legacy `placements`; the older
+  normalization contract is a compatibility question for this PR.
 - A constructed top-level circuit must expose at least one port. One-port circuits
   are supported. Invalid recursive entries can be warned about and skipped during
   coercion; do not assume all malformed input fails immediately.
@@ -52,18 +52,14 @@ Hierarchy must be acyclic even when optical wiring has feedback. Explicit
 acyclicity validation raises `ValueError` for recursive component definitions;
 `test_hierarchy_validation.py` distinguishes these from valid optical feedback.
 
-Known identity limitation ([#120](https://github.com/gdsfactory/sax/issues/120)):
-`component` serves as both model key and recursive cell key. Counted gdsfactory
-hierarchy variants can silently fall back to layout subcircuits instead of their
-shared analytical model. Native kfnetlist input now avoids this: `sax.circuit`
-accepts `Netlist`/`PlacedNetlist` hierarchies and resolves factory `component`
-before descending into a distinct `PlacedInstance.cell`. Legacy dictionaries and
-`.pic.yml` still use the legacy path and retain the limitation; see
-[the canonical change proposal](changes/kfnetlist-canonical.md) for the
-directed-connection blocker. `test_native_kfnetlist.py` and the smoke suite cover
-factory substitution, distinct-cell fallback, overrides, missing-model
-diagnostics, arrays, probes, settings, JIT, and gradients.
-
+For the current native development path, SAX uses `component` as the factory/model
+key and `netlist_id` as an explicit child definition key. It validates referenced
+documents on ingestion. The old PlacedNetlist and implicit factory-name hierarchy
+behavior is deliberately absent in this breaking pass; the compatibility decision
+is recorded in [plain netlist references](changes/plain-netlist-references.md).
+Focused tests in `test_explicit_netlist_hierarchy.py` cover reference traversal,
+model substitution, JSON/dict input, flattening, probes, and invalid documents.
+Legacy/PIC hierarchy regressions remain open during this pass.
 Array instances expand to `name<column.row>`. References can infer/patch array
 extents. Evaluation uses the base name's settings for every element; this is not
 independent per-element parameter addressing. Array extent inference and expansion do not mutate caller input.
@@ -73,8 +69,8 @@ independent per-element parameter addressing. Array extent inference and expansi
 and net names/settings are retained. Use `sep="__"` when constructing a circuit
 from the result: the legacy `~` separator is not a valid model-signature identifier.
 Instance renaming updates both wiring formats without mutating input. Native
-flattening preserves analytical model boundaries using explicit instance-cell maps
-and existing cell exclusions. It can retain one modeled instance while expanding
+flattening preserves analytical model boundaries using explicit instance-to-
+netlist maps and existing exclusions. It can retain one modeled instance while expanding
 another instance of the same cell. Hierarchy pruning dispatches per cell and uses
 instance connectivity directly, without synthetic names that could collide.
 Flattening is not a general hierarchical placement/settings composition API.
@@ -82,7 +78,7 @@ Regression tests: `src/tests/test_netlist_transforms.py`.
 
 ## Native model keys and API boundary
 
-Cell-specific `models[cell]` overrides precede qualified factory bindings
+Reference-specific `models[netlist_id]` overrides precede qualified factory bindings
 `models["library::component"]`, followed by an exact bare factory binding when
 that factory appears in only one library in the supplied hierarchy. Conflicting
 bare bindings raise a diagnostic instead of silently selecting one library.
@@ -90,9 +86,10 @@ No suffix stripping is performed; `coupler2` is an independent factory name.
 Explicit callable instances are instance-local bindings. Their adapter uses
 collision-avoiding internal model keys, so same-named Python functions do not
 overwrite one another or a separately supplied factory model. Keyword partial
-arguments become per-instance settings; positional partials are rejected. Resolution then follows a concrete child `cell`, with
-exact component-name fallback for legacy/plain hierarchy input. Missing-model
-errors identify the instance path, library, factory, cell, and attempted keys.
+arguments become per-instance settings; positional partials are rejected.
+Resolution then follows an explicit child `netlist_id`. Leaf instances have no
+child fallback. Missing-model errors identify the instance path, library, factory,
+reference, and attempted keys.
 
 Native keys remain unchanged in dependency information. Backend discovery uses
 local identifier aliases so the existing lowered-table validators do not restrict
@@ -118,9 +115,9 @@ Thus `model(wl=wl, a={"length": 30})` distributes `wl` while overriding `a`'s le
 Legacy settings (including `info` merged over explicit instance settings) are
 retained in per-cell/per-instance Python tables during circuit preparation, outside
 native JSON serialization. Arrays, complex values, and traced numerical settings
-therefore remain usable. Native `info` stays metadata. Placement is passed to
-models exposing a `placement` parameter when placed data is present; legacy
-coordinates use x+dx, y+dy, rounded rotation modulo 360, and boolean mirror.
+therefore remain usable. Native `info` stays metadata. Placement is not part of
+plain `Netlist`, and this breaking pass does not pass legacy placement data to
+models; see the migration note for the compatibility decision.
 
 Unknown instance netlist keys are filtered, but unknown explicit call-time instance
 keys may reach the model and raise an error. Do not assume root netlist `settings`
@@ -219,11 +216,10 @@ supported. Legacy array endpoints are zero-based; native references use one-base
 `ia`/`ib`, translated during lowering. Declared legacy dimensions accept `columns`/
 `rows` and `num_a`/`num_b`.
 
-Evidence: `test_native_pic.py` exercises public returns, root precedence,
-multifile and multimodule loading, numerical parity, settings overrides, metadata
-rejection, routes, and array indices. `test_native_extraction.py` extracts real
-gdsfactory variants and checks asymmetric factory replacement and distinct child
-fallback without changing caller-owned netlists.
+Earlier evidence: `test_native_pic.py` and `test_native_extraction.py` covered
+PIC and placed extraction behavior before this migration. Several of those tests
+currently fail because old inputs do not carry explicit references; see
+[the migration audit](changes/plain-netlist-references.md).
 
 The callable adapter reserves existing factory and cell keys before allocating
 private bindings, including unresolved factory names. Probe paths normalize array

@@ -97,7 +97,7 @@ def circuit(
 
     Args:
         netlist: Circuit netlist specifying instances, connections, and ports.
-            Accepts native Netlist/PlacedNetlist objects, native JSON, legacy
+            Accepts native Netlist objects, native JSON, legacy
             dictionaries, or a hierarchy mapping with explicit child cell identities.
         models: Dictionary mapping component names to their model functions.
             If None, models must be provided in the netlist itself.
@@ -422,7 +422,7 @@ def _circuit_native(
             {},
             nets,
             ports,
-            native.placements(nl),
+            {},
             available,
             backend,
             ignore_impossible_connections=ignore_impossible_connections,
