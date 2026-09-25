@@ -8,7 +8,8 @@ import jax
 from jaxtyping import Array
 
 import sax
-from sax.netlists import _nets_to_connections_strict
+
+from ._connections import nets_to_connections_strict
 
 __all__ = [
     "analyze_circuit_fg",
@@ -92,7 +93,7 @@ def analyze_circuit_fg(
         analyzed = analyze_circuit_fg(analyzed_instances, nets, ports)
         ```
     """
-    connections = _nets_to_connections_strict(nets)
+    connections = nets_to_connections_strict(nets)
     return connections, ports  # skip analysis for now
 
 

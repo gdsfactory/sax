@@ -1,49 +1,16 @@
 # External data, interpolation, and fitting
 
-## Netlist adapters
+## External schematic import
 
-| API | Baseline behavior |
-| --- | --- |
-| `load_netlist` | Read text/path/file-like content and `yaml.safe_load` it; loading is not full circuit validation |
-| `load_recursive_netlist` | Load the top file first, then suffix-matching files recursively in sorted order; reject duplicate normalized component names |
-| `parse_kfnetlist` | Accept dictionary, JSON string, or object with `to_dict`; return a one-entry recursive netlist (legacy dictionary output; retained for compatibility) |
-| `parse_kfnetlist_recursive` | Convert a named mapping of such netlists; preserve mapping order |
-| `native.load_pic_yaml` | Load flat or `modules`/`toplevel` PIC YAML into native kfnetlist objects |
-| `native.load_native_netlist` / `load_native_recursive_netlist` | Native-object PIC loaders |
-| `native.from_legacy_flat` / `from_legacy_recursive` | Adapt legacy SAX dictionaries into native objects |
-| `parse_mosaic` | Read dictionary/YAML/path; map components and properties into instances, nets, external ports |
+`parse_mosaic` reads a Mosaic dictionary, YAML text, or path and constructs a
+`kfnetlist.Netlist` directly. Component names come from supplied models, an
+active gdsfactory PDK, or a final-name fallback. One-member nets become external
+ports; multi-member nets become endpoint pairs. SAX no longer exposes wrappers
+for kfnetlist parsing or YAML loading, and circuit construction accepts only
+kfnetlist objects. kfnetlist owns its own serialization and hierarchy validation.
 
-`sax.circuit` builds every circuit through the native kfnetlist path:
-`native.to_hierarchy` adapts legacy dictionaries, parsed PIC documents, native JSON,
-and native objects into `{cell: Netlist}` plus an explicit root,
-and `_circuit_native` lowers them to backend tables. Native input is never turned
-into SAX's legacy dictionary schema for construction. The forward backend and direction hints have been removed. Factory
-`component` models are resolved before descending into a distinct
-`PlacedInstance.cell`.
-
-kfnetlist array references translate 1-based `ia/ib` to zero-based
-`instance<column.row>,port`. Collapsed references to array instances target `<0.0>`.
-The compatibility `parse_kfnetlist` adapter attaches external members to the first
-instance member and lowers multiple members as a chain. The canonical native
-circuit path instead rejects unsupported junctions, aliases, and unattached
-external ports; see `circuits.md`. Unused layout fields are not retained by the
-compatibility adapter, which itself does not import kfnetlist.
-In particular it drops `kcl` and placed-instance `cell` references, so it does not
-support general hierarchy fallback when factory names differ from cell-map keys.
-The [canonical kfnetlist investigation](changes/kfnetlist-canonical.md) records a
-live reproduction and a proposed migration retaining `.pic.yml` compatibility.
-
-Mosaic resolves models through the supplied mapping, optionally an active
-gdsfactory PDK, or a final-name fallback. One-member nets become external ports;
-multi-member nets become all endpoint pairs. This differs from kfnetlist's chain
-representation and can require KLU for multiply connected endpoints.
-
-Evidence: [`parsers/kfnetlist.py`](../src/sax/parsers/kfnetlist.py),
-[`parsers/mosaic.py`](../src/sax/parsers/mosaic.py),
-[`utils.py`](../src/sax/utils.py). Test surface:
-[`test_kfnetlist_parser.py`](../src/tests/test_kfnetlist_parser.py), skipped in the
-original baseline environment; all 33 tests ran successfully during final remediation
-with kfnetlist 0.3.0 installed.
+Evidence: [`parsers/mosaic.py`](../src/sax/parsers/mosaic.py),
+[`circuits.py`](../src/sax/circuits.py).
 
 scikit-rf is imported when Touchstone parsing/writing is requested, rather than
 during `import sax`; parser and writer numerical behavior is unchanged.
@@ -143,21 +110,3 @@ later dictionaries precedence; `update_settings` updates existing leaf keys, not
 arbitrary new global parameters. Preserve wrapped model signatures where supported.
 Tests: [`01_utils.ipynb`](../src/tests/nbs/01_utils.ipynb). Do not treat utility
 renaming or flattening as a guaranteed lossless transformation of every netlist field.
-
-## Native copying and serialization
-
-Placed dictionaries/JSON are deserialized as `PlacedNetlist`; ordinary native data
-uses `Netlist`. `native.copy_netlist` reconstructs using the source's concrete type
-and preserves nested settings/info, arrays, topology, cell references, and geometry.
-Circuit preparation stores Python-only legacy settings outside the native object;
-pure native adapters/loaders retain native JSON-compatible storage constraints.
-Evidence: `src/tests/test_native_settings.py`.
-
-
-Native PIC loading has explicit root selection and retains multi-module hierarchy.
-Public loader dictionaries remain supported and preserve raw document metadata;
-unsupported module settings/info/metadata and `${...}` expressions are rejected
-by native loading. Standalone recursive file keys use the same `clean_string`
-normalization and duplicate rejection as the public loader. See the root/loader
-contract in [circuits](circuits.md) and runnable examples in
-[the migration guide](../docs/native-netlists.md).

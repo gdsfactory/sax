@@ -4,6 +4,7 @@ from itertools import combinations
 from pathlib import Path
 
 import yaml
+from kfnetlist import Netlist, NetlistPort, PortRef
 
 import sax
 
@@ -14,12 +15,8 @@ def parse_mosaic(  # noqa: C901
     models: sax.Models | None = None,
 ) -> sax.Netlist:
     """Parse mosaic schematic."""
-    netlist: sax.Netlist = {
-        "instances": {},
-        "nets": [],
-        "ports": {},
-    }
-    nets = {}
+    netlist = Netlist()
+    nets: dict[str, list[PortRef]] = {}
     nyandct = _to_dict(nyancir)
     name_map = _name_mapping(nyandct)
     comp_map = _get_component_map()
@@ -39,25 +36,23 @@ def parse_mosaic(  # noqa: C901
         else:
             component = _to_modelname(comp_map, component_fqn)
         settings = nyanobj.get("props", {})
-        netlist["instances"][name] = {
-            "component": component,
-            "settings": settings,
-        }
+        netlist.create_inst(name, "mosaic", component, settings)
         for p, net in nyanobj.get("nets", {}).items():
             if net not in nets:
                 nets[net] = []
-            nets[net].append(f"{name},{p}")
+            nets[net].append(PortRef(name, p))
 
     for net_name, ports in nets.items():
         len_ports = len(ports)
         if len_ports == 0:
             continue
         if len_ports == 1:
-            netlist["ports"][net_name] = ports[0]
+            netlist.create_port(net_name)
+            netlist.create_net(NetlistPort(name=net_name), ports[0])
             continue
 
         for p1, p2 in combinations(ports, 2):
-            netlist["nets"].append({"p1": p1, "p2": p2})
+            netlist.create_net(p1, p2)
     return netlist
 
 

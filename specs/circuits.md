@@ -2,39 +2,37 @@
 
 ## Input contract
 
-A flat netlist has `instances`, with optional `connections`, `nets`, `ports`,
-`placements`, and `settings`. A recursive netlist maps component names to flat
-netlists. `sax.netlist` wraps flat input under `top_level_name` (default `top_level`)
-or moves that named entry first. Otherwise the first recursive entry is the root.
-This helper alone is not full validation.
+A netlist is a plain `kfnetlist.Netlist`. A hierarchy is a
+`kfnetlist.HierarchicalNetlist` mapping document-local IDs to netlists; a reference
+instance uses `netlist_id` to select a child. `sax.circuit` accepts either object.
+A plain netlist is simulated under `top_level_name` (default `top_level`); a
+hierarchy uses an explicit root, then `top_level` if present, then its first entry.
+Children remain mutable; kfnetlist validates the document before circuit use.
+SAX accepts no legacy dictionary or JSON netlist inputs in this breaking pass.
 
 ```python
-net = {
-    "instances": {"a": "straight", "b": {"component": "straight",
-                                           "settings": {"length": 20.0}}},
-    "connections": {"a,out0": "b,in0"},
-    "ports": {"in": "a,in0", "out": "b,out0"},
-}
+import sax
+from kfnetlist import Netlist, NetlistPort, PortRef
+
+net = Netlist()
+net.create_inst("a", "pdk", "straight", {"length": 20.0})
+net.create_port("in")
+net.create_port("out")
+net.create_net(NetlistPort(name="in"), PortRef("a", "in"))
+net.create_net(PortRef("a", "out"), NetlistPort(name="out"))
+model, info = sax.circuit(net, {"straight": straight_model})
 ```
 
-- An instance normalizes from a component string, callable, keyword-only partial,
-  or dictionary with `component` and optional `settings`/`array`. Partial positional
-  arguments are rejected. Instance `info` entries are merged into settings.
-- Instance-port references use `instance,port`. `connections` is a mapping of
-  endpoint pairs; `nets` is a list of `{p1, p2}` records. Circuit construction
-  combines both. Net metadata is not a modeled transmission element.
-- Route bundles with `links` normalize into nets. Unrecognized netlist fields are
-  filtered by the schema; this is not lossless round-trip storage for layout data.
-- The plain native path currently ignores legacy `placements`; the older
-  normalization contract is a compatibility question for this PR.
-- A constructed top-level circuit must expose at least one port. One-port circuits
-  are supported. Invalid recursive entries can be warned about and skipped during
-  coercion; do not assume all malformed input fails immediately.
+An instance records a library, component, settings, and optionally an explicit
+child `netlist_id`. SAX does not infer a child from the component name. kfnetlist
+owns netlist validation, serialization, and generic transforms. SAX translates
+valid topology into flat backend tables and requires a constructed root to expose
+at least one port.
 
-Evidence: [`saxtypes/netlist.py`](../src/sax/saxtypes/netlist.py) (`val_instance`,
-`val_netlist`, `val_recnet`), [`netlists.py`](../src/sax/netlists.py) (`netlist`).
-Tests: [`test_netlist.py`](../src/tests/test_netlist.py),
-[`test_circuit.py`](../src/tests/test_circuit.py).
+Evidence: [`saxtypes/netlist.py`](../src/sax/saxtypes/netlist.py),
+[`circuits.py`](../src/sax/circuits.py), and
+[`_circuit_compiler.py`](../src/sax/_circuit_compiler.py).
+Tests: [`test_explicit_netlist_hierarchy.py`](../src/tests/test_explicit_netlist_hierarchy.py).
 
 ## Construction and hierarchy
 
@@ -42,39 +40,22 @@ Tests: [`test_netlist.py`](../src/tests/test_netlist.py),
 returns `(model, CircuitInfo)`. `CircuitInfo` contains the component dependency
 DAG, constructed/resolved component models, and canonical backend name.
 
-Construction adapts callable instances and settings, normalizes native topology,
-validates/plans probe paths, and prunes instances disconnected from ports or probe
-roots before validating model dependencies. Lowering expands arrays, handles
-internal ports, and inserts probes; root-port validation uses the resulting ports.
+Construction validates the hierarchy, plans probes, and prunes instances
+disconnected from ports or probe roots before validating model dependencies.
+Compilation expands arrays, handles internal ports, and inserts probes.
 Dependencies are constructed leaf-first; an explicitly supplied model can stand
-in for a subcircuit. Missing leaf models raise `ValueError` with model diagnostics.
-Hierarchy must be acyclic even when optical wiring has feedback. Explicit
-acyclicity validation raises `ValueError` for recursive component definitions;
-`test_hierarchy_validation.py` distinguishes these from valid optical feedback.
+in for a referenced child. Missing leaf models raise `ValueError` with model
+diagnostics. Hierarchy must be acyclic even when optical wiring has feedback.
 
-For the current native development path, SAX uses `component` as the factory/model
-key and `netlist_id` as an explicit child definition key. It validates referenced
-documents on ingestion. The old PlacedNetlist and implicit factory-name hierarchy
-behavior is deliberately absent in this breaking pass; the compatibility decision
-is recorded in [plain netlist references](changes/plain-netlist-references.md).
-Focused tests in `test_explicit_netlist_hierarchy.py` cover reference traversal,
-model substitution, JSON/dict input, flattening, probes, and invalid documents.
-Legacy/PIC hierarchy regressions remain open during this pass.
-Array instances expand to `name<column.row>`. References can infer/patch array
-extents. Evaluation uses the base name's settings for every element; this is not
-independent per-element parameter addressing. Array extent inference and expansion do not mutate caller input.
+SAX uses `component` as the factory/model key and `netlist_id` as the explicit
+child definition key. It does not infer hierarchy from factory names or accept
+placed instances. Array instances expand to `name<column.row>`; evaluation uses
+the base instance's settings for every element.
 
-`flatten_netlist` separately inlines children using `~` by default. Both
-`connections` and `nets` endpoints are rewritten, including links within one child,
-and net names/settings are retained. Use `sep="__"` when constructing a circuit
-from the result: the legacy `~` separator is not a valid model-signature identifier.
-Instance renaming updates both wiring formats without mutating input. Native
-flattening preserves analytical model boundaries using explicit instance-to-
-netlist maps and existing exclusions. It can retain one modeled instance while expanding
-another instance of the same cell. Hierarchy pruning dispatches per cell and uses
-instance connectivity directly, without synthetic names that could collide.
-Flattening is not a general hierarchical placement/settings composition API.
-Regression tests: `src/tests/test_netlist_transforms.py`.
+Generic flattening is `HierarchicalNetlist.flatten(root, separator=...)` in
+kfnetlist. SAX no longer wraps flattening, copying, renaming, or pruning as public
+netlist operations. Its private pruning keeps only instances needed for circuit
+simulation, including probe roots.
 
 ## Native model keys and API boundary
 
@@ -83,20 +64,19 @@ Reference-specific `models[netlist_id]` overrides precede qualified factory bind
 that factory appears in only one library in the supplied hierarchy. Conflicting
 bare bindings raise a diagnostic instead of silently selecting one library.
 No suffix stripping is performed; `coupler2` is an independent factory name.
-Explicit callable instances are instance-local bindings. Their adapter uses
-collision-avoiding internal model keys, so same-named Python functions do not
-overwrite one another or a separately supplied factory model. Keyword partial
-arguments become per-instance settings; positional partials are rejected.
-Resolution then follows an explicit child `netlist_id`. Leaf instances have no
-child fallback. Missing-model errors identify the instance path, library, factory,
-reference, and attempted keys.
+SAX no longer binds direct Python callables inside netlist instances: model
+functions are supplied through the `models` mapping. Resolution then follows an
+explicit child `netlist_id`. Leaf instances have no child fallback.
+Missing-model errors identify the instance path, library, factory, reference,
+and attempted keys.
 
 Native keys remain unchanged in dependency information. Backend discovery uses
 local identifier aliases so the existing lowered-table validators do not restrict
 qualified identities. This is backend-table validation, not canonical topology.
-Public `load_netlist`/`load_recursive_netlist` keep their dictionary returns;
-`native.load_*` are explicit native-object loaders. Root/document compatibility
-and user examples are documented below and in `docs/native-netlists.md`.
+SAX no longer exposes kfnetlist parser, YAML loader, or legacy PIC adapter
+functions. Construct or deserialize netlist objects with kfnetlist, then pass
+them to `sax.circuit`. Root selection is described above and in
+`docs/native-netlists.md`.
 
 ## Evaluation and settings precedence
 
@@ -112,12 +92,8 @@ For ordinary instances, effective parameter precedence is:
 4. Explicit instance/nested call-time settings, which override globals.
 
 Thus `model(wl=wl, a={"length": 30})` distributes `wl` while overriding `a`'s length.
-Legacy settings (including `info` merged over explicit instance settings) are
-retained in per-cell/per-instance Python tables during circuit preparation, outside
-native JSON serialization. Arrays, complex values, and traced numerical settings
-therefore remain usable. Native `info` stays metadata. Placement is not part of
-plain `Netlist`, and this breaking pass does not pass legacy placement data to
-models; see the migration note for the compatibility decision.
+Instance settings must be JSON-compatible kfnetlist settings. Native `info` is
+metadata, not a model parameter source. Plain netlists carry no placement.
 
 Unknown instance netlist keys are filtered, but unknown explicit call-time instance
 keys may reach the model and raise an error. Do not assume root netlist `settings`
@@ -166,8 +142,7 @@ taps through parents. Invalid hierarchy paths and generated name collisions rais
 acquire additional internal probe structure. Probes are nonphysical copying
 instruments, not energy-conserving splitters.
 
-Evidence: `expand_probes`, `_expand_probes_recursive`, `extract_port_probes` in
-[`netlists.py`](../src/sax/netlists.py),
+Evidence: `expand_probes_tables` in [`_circuit_compiler.py`](../src/sax/_circuit_compiler.py),
 [`models/probes.py`](../src/sax/models/probes.py).
 Tests: [`test_probes.py`](../src/tests/test_probes.py), notably forward direction,
 non-perturbation, boundary/unconnected cases, hierarchy, conflicts, and internal
@@ -190,47 +165,14 @@ probe paths; a root with no effective ports after transformations is rejected wi
 the at-least-one-port diagnostic. Array index dots are not hierarchy separators,
 and runtime array settings remain keyed by the base instance name.
 
-Evidence: `src/tests/test_native_topology.py`, `test_probes.py`,
-`test_backend_restrictions.py`, and `test_hierarchy_validation.py`.
+Current object-path evidence: `test_explicit_netlist_hierarchy.py` and
+`test_smoke.py`. Older topology/probe tests still need migration from legacy
+dictionary and module imports.
 
-## PIC roots and public loader contracts
+## Root selection and removed adapters
 
-Public `sax.load_netlist` and `sax.load_recursive_netlist` continue returning
-legacy dictionaries. `native.load_pic_yaml` returns `(cells, root)` and
-`native.load_native_netlist` returns a single native object, rejecting multi-cell
-documents instead of discarding children. Circuit overloads accept native objects,
-JSON, and legacy/PIC mappings.
-
-Root precedence is an explicit `top_level_name`, document `toplevel`, a cell named
-`top_level`, then the first mapping entry. An explicit unknown root is an error.
-Flat input uses the supplied root name or `top_level`. Recursive native file
-loading preserves a module document's root and children, orders the root first,
-normalizes standalone filename stems with `clean_string`, discovers custom suffixes
-recursively, and rejects duplicate cell names.
-
-PIC module-level settings/info/metadata are explicitly rejected by native loading;
-keep the original document with the public loader when these must be retained.
-Legacy flat root settings retain their historical ignored behavior. `${...}`
-expressions are rejected, never evaluated. Instance settings and route links are
-supported. Legacy array endpoints are zero-based; native references use one-based
-`ia`/`ib`, translated during lowering. Declared legacy dimensions accept `columns`/
-`rows` and `num_a`/`num_b`.
-
-Earlier evidence: `test_native_pic.py` and `test_native_extraction.py` covered
-PIC and placed extraction behavior before this migration. Several of those tests
-currently fail because old inputs do not carry explicit references; see
-[the migration audit](changes/plain-netlist-references.md).
-
-The callable adapter reserves existing factory and cell keys before allocating
-private bindings, including unresolved factory names. Probe paths normalize array
-names consistently with lowering: singleton `<0.0>` collapses to the base name,
-and out-of-range selections fail explicitly. Tests:
-`test_callable_binding_cannot_capture_an_unbound_factory` and
-`test_hierarchical_probe_array_names_match_lowering`.
-
-
-PIC wrapper detection does not consume a concrete legacy/native cell named
-`modules`. Native hierarchy dictionaries are recognized before flat/PIC parsing,
-so cells named `instances`, `ports`, or `modules` survive object/dict/JSON input.
-PIC modules are adapted as cells directly, without reinterpreting module names
-as flat-input fields. Regressions live in `test_native_pic.py`.
+`top_level_name` selects the root of a `HierarchicalNetlist`. Without it SAX
+uses `top_level` if present, then the first entry. An unknown root is an error.
+For a plain `Netlist`, the selected name defaults to `top_level`. Legacy SAX
+netlist dictionaries, PIC documents, JSON text, and placed netlists are rejected.
+Use kfnetlist constructors or deserializers before calling SAX.

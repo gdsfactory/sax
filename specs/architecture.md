@@ -4,9 +4,9 @@
 
 SAX is a frequency-domain scattering-parameter circuit simulator built around JAX.
 A component is a Python callable returning an S-matrix; a composed circuit is
-another callable with the same role. Dictionaries, tuples, and arrays are the
-runtime interchange structures, with annotated types and Pydantic validators at
-selected boundaries rather than a mandatory component class hierarchy.
+another callable with the same role. The public netlist type is
+`kfnetlist.Netlist`; a referenced document is `kfnetlist.HierarchicalNetlist`. Dictionaries,
+tuples, and arrays remain the numerical model and backend interchange structures.
 
 SAX provides differentiation-friendly numerical models and circuit evaluation,
 not a time-domain solver, electromagnetic field solver, layout engine, or universal
@@ -18,9 +18,9 @@ supported. Optimization is performed with JAX-compatible objectives and tools;
 
 | Source | Responsibility |
 | --- | --- |
-| [`saxtypes/`](../src/sax/saxtypes/) | Annotated types, coercion, model/netlist validation |
+| [`saxtypes/`](../src/sax/saxtypes/) | Annotated model/backend types and the public kfnetlist alias |
 | [`s.py`](../src/sax/s.py), [`multimode.py`](../src/sax/multimode.py), [`ports.py`](../src/sax/ports.py) | Representations, modes, port names |
-| [`netlists.py`](../src/sax/netlists.py), [`circuits.py`](../src/sax/circuits.py) | Topology preparation, hierarchy, model composition |
+| [`circuits.py`](../src/sax/circuits.py), [`_circuit_compiler.py`](../src/sax/_circuit_compiler.py) | Circuit composition, model resolution, probe and backend-table compilation |
 | [`backends/`](../src/sax/backends/) | Analysis/evaluation implementations |
 | [`models/`](../src/sax/models/) | Optical primitives, factories, probes, RF models |
 | [`parsers/`](../src/sax/parsers/) | External schematic/netlist and S-parameter adapters |
@@ -30,7 +30,7 @@ supported. Optimization is performed with JAX-compatible objectives and tools;
 
 ## Execution lifecycle
 
-1. Supply component functions and a flat or recursive netlist.
+1. Supply component functions and a `kfnetlist.Netlist` or `HierarchicalNetlist`.
 2. `circuit` normalizes topology, handles internal ports/probes and arrays, prunes
    unused instances, builds a component dependency graph, and resolves models.
 3. Build subcircuits from leaves upward. Each backend discovers component topology

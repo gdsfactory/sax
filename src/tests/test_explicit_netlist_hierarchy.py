@@ -1,14 +1,17 @@
 """SAX's plain kfnetlist hierarchy contract during the reference migration."""
 
-import json
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from kfnetlist import Netlist, NetlistPort, PortRef, RefNetlistInstance
+from kfnetlist import (
+    HierarchicalNetlist,
+    Netlist,
+    NetlistPort,
+    PlacedNetlist,
+    PortRef,
+)
 
 import sax
-from sax import native
 
 
 def _model(value: float = 1.0) -> sax.SDict:
@@ -35,39 +38,37 @@ def _document() -> dict[str, Netlist]:
     return {"top_level": top, "child": child}
 
 
-@pytest.mark.parametrize("form", ["objects", "dict", "json"])
-def test_plain_reference_traversal(form: str) -> None:
-    cells = _document()
-    if form != "objects":
-        cells = {name: nl.to_dict() for name, nl in cells.items()}
-    if form == "json":
-        cells = json.dumps(cells)
-    model, _ = sax.circuit(cells, {"waveguide": _model})
+def test_plain_reference_traversal() -> None:
+    model, _ = sax.circuit(HierarchicalNetlist(_document()), {"waveguide": _model})
     result = model()
     np.testing.assert_allclose(result["a_in", "a_out"], 3)
     np.testing.assert_allclose(result["b_out", "b_in"], 1.5)
 
 
+def test_hierarchical_netlist_object_is_a_circuit_input() -> None:
+    document = HierarchicalNetlist(_document())
+    assert sax.RecursiveNetlist is HierarchicalNetlist
+    model, _ = sax.circuit(document, {"waveguide": _model})
+    np.testing.assert_allclose(model()["a_in", "a_out"], 3)
+    document["top_level"].create_inst(
+        "broken", "pdk", "make_other", netlist_id="missing"
+    )
+    with pytest.raises(ValueError, match=r"missing.*does not exist"):
+        sax.circuit(document, {"waveguide": _model})
+
+
 def test_factory_model_replaces_referenced_child() -> None:
-    model, _ = sax.circuit(_document(), {"make_child": lambda: _model(7)})
+    model, _ = sax.circuit(
+        HierarchicalNetlist(_document()), {"make_child": lambda: _model(7)}
+    )
     np.testing.assert_allclose(model()["a_in", "a_out"], 7)
-
-
-def test_plain_reference_flatten_and_copy() -> None:
-    cells = _document()
-    copied = native.copy_netlist(cells["top_level"])
-    assert type(copied) is Netlist
-    assert isinstance(copied.instances["a"], RefNetlistInstance)
-    flat = native.flatten_netlist(cells, "top_level")
-    assert type(flat) is Netlist
-    assert set(flat.instances) == {"a__leaf", "b__leaf"}
 
 
 def test_missing_child_reference_is_not_factory_fallback() -> None:
     cells = _document()
     cells["top_level"].create_inst("bad", "pdk", "waveguide", netlist_id="missing")
     with pytest.raises(ValueError, match=r"missing|does not exist"):
-        sax.circuit(cells, {"waveguide": _model})
+        sax.circuit(HierarchicalNetlist(cells), {"waveguide": _model})
 
 
 def test_reference_override_precedes_factory_and_preserves_other_variant() -> None:
@@ -83,7 +84,7 @@ def test_reference_override_precedes_factory_and_preserves_other_variant() -> No
         "child": lambda: _model(7),
         "make_child": lambda: _model(2),
     }
-    model, _ = sax.circuit(cells, models)
+    model, _ = sax.circuit(HierarchicalNetlist(cells), models)
     np.testing.assert_allclose(model()["a_in", "a_out"], 7)
     np.testing.assert_allclose(model()["b_in", "b_out"], 7)
     np.testing.assert_allclose(model()["c_in", "c_out"], 2)
@@ -91,7 +92,9 @@ def test_reference_override_precedes_factory_and_preserves_other_variant() -> No
 
 def test_hierarchical_probe_uses_explicit_reference() -> None:
     model, _ = sax.circuit(
-        _document(), {"waveguide": _model}, probes={"tap": "a.leaf,in"}
+        HierarchicalNetlist(_document()),
+        {"waveguide": _model},
+        probes={"tap": "a.leaf,in"},
     )
     result = model()
     assert any("tap_fwd" in pair for pair in result)
@@ -102,4 +105,34 @@ def test_reference_cycle_rejected_before_model_substitution() -> None:
     cells = _document()
     cells["child"].create_inst("loop", "pdk", "make_top", netlist_id="top_level")
     with pytest.raises(ValueError, match="cyclic"):
-        sax.circuit(cells, {"make_child": _model})
+        sax.circuit(HierarchicalNetlist(cells), {"make_child": _model})
+
+
+def test_public_netlist_types_use_kfnetlist() -> None:
+    assert sax.Netlist is Netlist
+    assert sax.saxtypes.Netlist is Netlist
+    assert sax.RecursiveNetlist is HierarchicalNetlist
+
+
+@pytest.mark.parametrize(
+    "invalid", [{"instances": {}}, "{}", _document(), PlacedNetlist()]
+)
+def test_circuit_rejects_non_kfnetlist_inputs(invalid: object) -> None:
+    with pytest.raises(TypeError, match=r"kfnetlist\.Netlist"):
+        sax.circuit(invalid, {"waveguide": _model})  # type: ignore[arg-type]
+
+
+def test_mosaic_parser_emits_kfnetlist_directly() -> None:
+    parsed = sax.parse_mosaic(
+        {
+            "a": {
+                "type": "cell",
+                "model": "waveguide",
+                "props": {"value": 2},
+                "nets": {"in": "input", "out": "output"},
+            }
+        }
+    )
+    assert type(parsed) is Netlist
+    model, _ = sax.circuit(parsed, {"waveguide": _model})
+    np.testing.assert_allclose(model()["input", "output"], 2)

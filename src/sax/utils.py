@@ -26,7 +26,6 @@ import jax.numpy as jnp
 import numpy as np
 import orjson
 import pandas as pd
-import yaml
 from numpy.exceptions import ComplexWarning
 
 import sax
@@ -42,8 +41,6 @@ __all__ = [
     "get_settings",
     "grouped_interp",
     "hash_dict",
-    "load_netlist",
-    "load_recursive_netlist",
     "maybe",
     "merge_dicts",
     "read",
@@ -151,82 +148,6 @@ def read(content_or_filename: str | Path | sax.IOLike) -> str:
         return Path(content_or_filename).read_text()
 
     return content_or_filename.read()
-
-
-def load_netlist(content_or_filename: str | Path | sax.IOLike) -> sax.Netlist:
-    """Load a SAX netlist from YAML content or file.
-
-    Parses YAML content to create a SAX netlist dictionary. The YAML should
-    contain instances, connections, and ports sections.
-
-    Args:
-        content_or_filename: YAML content as string, file path, or file-like object.
-
-    Returns:
-        Parsed netlist dictionary.
-
-    Example:
-        ```python
-        # Load from file
-        netlist = load_netlist("circuit.yml")
-
-        # Load from YAML string
-        yaml_content = '''
-        instances:
-          wg1:
-            component: waveguide
-        ports:
-          in: wg1,in
-          out: wg1,out
-        '''
-        netlist = load_netlist(yaml_content)
-        ```
-    """
-    return yaml.safe_load(read(content_or_filename))
-
-
-def load_recursive_netlist(
-    top_level_path: str | Path,
-    ext: str = ".pic.yml",
-) -> sax.RecursiveNetlist:
-    """Load a SAX recursive netlist from a directory of YAML files.
-
-    Recursively loads all YAML files with the specified extension from a directory
-    to create a recursive netlist. Each file becomes a component in the recursive
-    netlist, with the filename (without extension) as the component name.
-
-    Args:
-        top_level_path: Path to the top-level netlist file.
-        ext: File extension to search for. Defaults to ".pic.yml".
-
-    Returns:
-        Recursive netlist dictionary mapping component names to their netlists.
-
-    Example:
-        ```python
-        # Load all .pic.yml files in directory
-        recnet = load_recursive_netlist("circuits/main.pic.yml")
-        # Result: {"main": {...}, "component1": {...}, "component2": {...}}
-        ```
-    """
-    top_level_path = Path(top_level_path).resolve()
-    folder_path = top_level_path.parent
-
-    def _net_name(path: Path) -> sax.Name:
-        return clean_string(path.name.removesuffix(ext))
-
-    recnet = {_net_name(top_level_path): load_netlist(top_level_path)}
-
-    for path in sorted(folder_path.rglob(f"*{ext}")):
-        if not path.is_file() or path.resolve() == top_level_path:
-            continue
-        name = _net_name(path)
-        if name in recnet:
-            msg = f"Duplicate recursive netlist component name {name!r}: {path}."
-            raise ValueError(msg)
-        recnet[name] = load_netlist(path)
-
-    return recnet
 
 
 def clean_string(
@@ -1033,7 +954,7 @@ def _get_port_combos(s: str, ports: list[str]) -> tuple[str, str]:
 
 
 def _get_port(pm: str) -> str:
-    return pm.split("@")[0]
+    return pm.split("@", maxsplit=1)[0]
 
 
 def _get_mode(pm: str) -> str:

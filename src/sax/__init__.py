@@ -159,8 +159,6 @@ from .utils import (
     get_settings,
     grouped_interp,
     hash_dict,
-    load_netlist,
-    load_recursive_netlist,
     maybe,
     merge_dicts,
     normalization,
@@ -177,10 +175,6 @@ from .utils import (
 from .multimode import (
     multimode,
     singlemode,
-)
-from .netlists import (
-    flatten_netlist,
-    netlist,
 )
 from .circuits import (
     circuit,
@@ -215,8 +209,6 @@ from .interpolation import (
 
 from . import fit
 from .parsers import (
-    parse_kfnetlist,
-    parse_kfnetlist_recursive,
     parse_lumerical_dat,
     parse_mosaic,
     parse_touchstone,
@@ -365,7 +357,6 @@ __all__ = [  # noqa: RUF022
     "evaluate_circuit_fg",
     "fit",
     "flatten_dict",
-    "flatten_netlist",
     "get_mode",
     "get_modes",
     "get_port_combinations",
@@ -379,18 +370,13 @@ __all__ = [  # noqa: RUF022
     "interpolate_xarray",
     "into",
     "l2_reg",
-    "load_netlist",
-    "load_recursive_netlist",
     "maybe",
     "merge_dicts",
     "models",
     "mse",
     "multimode",
-    "netlist",
     "normalization",
     "normalize",
-    "parse_kfnetlist",
-    "parse_kfnetlist_recursive",
     "parse_lumerical_dat",
     "parse_mosaic",
     "parse_touchstone",

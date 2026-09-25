@@ -197,4 +197,4 @@ convention = "google"
 where = ["src"]
 
 [tool.uv.sources]
-kfnetlist = { git = "https://github.com/gdsfactory/kfnetlist.git", branch = "main" }
+kfnetlist = { git = "https://github.com/gdsfactory/kfnetlist.git", branch = "sax" }

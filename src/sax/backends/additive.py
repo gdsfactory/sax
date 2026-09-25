@@ -8,7 +8,8 @@ import jax.numpy as jnp
 import networkx as nx
 
 import sax
-from sax.netlists import _nets_to_connections_strict
+
+from ._connections import nets_to_connections_strict
 
 __all__ = [
     "analyze_circuit_additive",
@@ -85,7 +86,7 @@ def analyze_circuit_additive(
         analyzed = analyze_circuit_additive(analyzed_instances, nets, ports)
         ```
     """
-    connections = _nets_to_connections_strict(nets)
+    connections = nets_to_connections_strict(nets)
     return connections, ports
 
 

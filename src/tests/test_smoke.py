@@ -4,9 +4,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from kfnetlist import HierarchicalNetlist, Netlist, NetlistPort, PortRef
 
 import sax
-from sax import native
 
 
 def _component(wl: sax.FloatArrayLike = 1.55, gain: float = 1.0) -> sax.SDict:
@@ -27,14 +27,13 @@ def test_asymmetric_representations() -> None:
 
 @pytest.mark.parametrize("backend", ["klu", "fg"])
 def test_circuit_settings_jit_gradient(backend: sax.BackendLike) -> None:
-    net = {
-        "instances": {
-            "a": {"component": "component", "settings": {"gain": 2.0}},
-            "b": "component",
-        },
-        "connections": {"a,out0": "b,in0"},
-        "ports": {"in": "a,in0", "out": "b,out0"},
-    }
+    net = Netlist()
+    net.create_inst("a", "pdk", "component", {"gain": 2.0})
+    net.create_inst("b", "pdk", "component")
+    net.create_net(PortRef("a", "out0"), PortRef("b", "in0"))
+    for name, instance, port in (("in", "a", "in0"), ("out", "b", "out0")):
+        net.create_port(name)
+        net.create_net(NetlistPort(name=name), PortRef(instance, port))
     model, _ = sax.circuit(net, {"component": _component}, backend=backend)
     wl = jnp.array([1.5, 1.6])
     np.testing.assert_allclose(
@@ -61,104 +60,25 @@ def _uncoupled_layout() -> sax.SDict:
     return sax.reciprocal({("in0", "out0"): jnp.asarray(0.0)})
 
 
-def _native_issue120_fixture() -> dict:
-    """Native placed hierarchy: one factory, two distinct instantiated cells."""
-    kf = pytest.importorskip("kfnetlist")
-    del kf
-    from kfnetlist import PlacedNetlist, Placement
+def test_reference_specific_model_keeps_factory_settings() -> None:
+    """Two referenced children share a factory but retain independent settings."""
+    child = Netlist()
+    child.create_inst("layout", "pdk", "uncoupled_layout")
+    for port in ("in0", "out0"):
+        child.create_port(port)
+        child.create_net(NetlistPort(name=port), PortRef("layout", port))
 
-    port = native.NetlistPort
-    ref = native.PortRef
-
-    def sub() -> PlacedNetlist:
-        nl = PlacedNetlist()
-        nl.create_inst(
-            "layout",
-            kcl="D",
-            component="uncoupled_layout",
-            settings={},
-            cell="uncoupled_cell",
-            placement=Placement(
-                x=0.0,
-                y=0.0,
-                orientation=0.0,
-                mirror=False,
-                bbox={"left": 0.0, "bottom": 0.0, "right": 1.0, "top": 1.0},
-            ),
+    top = Netlist()
+    for name, gain in (("a", 0.2), ("b", 0.3)):
+        top.create_inst(
+            name, "pdk", "coupled", {"gain": gain}, netlist_id=f"coupled_{name}"
         )
-        nl.create_port("in0")
-        nl.create_port("out0")
-        nl.create_net(port(name="in0"), ref(instance="layout", port="in0"))
-        nl.create_net(ref(instance="layout", port="out0"), port(name="out0"))
-        return nl
+        for port in ("in0", "out0"):
+            top.create_port(f"{name}_{port}")
+            top.create_net(NetlistPort(name=f"{name}_{port}"), PortRef(name, port))
 
-    top = PlacedNetlist()
-    top.create_inst(
-        "a", kcl="D", component="coupled", settings={"gain": 0.2}, cell="coupled_a"
-    )
-    top.create_inst(
-        "b", kcl="D", component="coupled", settings={"gain": 0.3}, cell="coupled_b"
-    )
-    for name in ("a_in", "a_out", "b_in", "b_out"):
-        top.create_port(name)
-    top.create_net(port(name="a_in"), ref(instance="a", port="in0"))
-    top.create_net(ref(instance="a", port="out0"), port(name="a_out"))
-    top.create_net(port(name="b_in"), ref(instance="b", port="in0"))
-    top.create_net(ref(instance="b", port="out0"), port(name="b_out"))
-
-    return {"coupled_a": sub(), "coupled_b": sub(), "top": top}
-
-
-def test_native_counted_hierarchy_model_identity() -> None:
-    """Issue #120 acceptance: one factory model covers every parameterization.
-
-    Native ``PlacedNetlist`` input keeps the factory name (``component``) and
-    the instantiated cell (``cell``) distinct, so both variants resolve to the
-    shared analytical model with their own settings.
-    """
-    cells = _native_issue120_fixture()
-    models = {"coupled": _component, "uncoupled_layout": _uncoupled_layout}
-    model, _ = sax.circuit(cells, models, top_level_name="top", backend="klu")
+    document = HierarchicalNetlist({"top": top, "coupled_a": child, "coupled_b": child})
+    model, _ = sax.circuit(document, {"coupled": _component}, top_level_name="top")
     result = model(wl=1.55)
-    np.testing.assert_allclose(result["a_in", "a_out"], 0.2 * jnp.exp(1.55j))
-    np.testing.assert_allclose(result["b_in", "b_out"], 0.3 * jnp.exp(1.55j))
-
-
-def test_legacy_counted_names_remain_ambiguous() -> None:
-    """Legacy counted names have lost factory provenance; do not guess them.
-
-    The un-numbered variant resolves to the analytical model, while the counted
-    variant silently descends into the layout subcircuit because legacy input
-    carries no separate factory identity. This documents the limitation rather
-    than hiding it; it is not a contract to strip numeric suffixes.
-    """
-    recnet = {
-        "top_level": {
-            "instances": {
-                "a": {"component": "coupled", "settings": {"gain": 0.2}},
-                "b": {"component": "coupled2", "settings": {"gain": 0.3}},
-            },
-            "ports": {
-                "a_in": "a,in0",
-                "a_out": "a,out0",
-                "b_in": "b,in0",
-                "b_out": "b,out0",
-            },
-        },
-        **{
-            name: {
-                "instances": {"layout": "uncoupled_layout"},
-                "ports": {"in0": "layout,in0", "out0": "layout,out0"},
-            }
-            for name in ("coupled", "coupled2")
-        },
-    }
-    models = {"coupled": _component, "uncoupled_layout": _uncoupled_layout}
-    model, _ = sax.circuit(recnet, models, backend="klu")
-    result = model(wl=1.55)
-    np.testing.assert_allclose(result["a_in", "a_out"], 0.2 * jnp.exp(1.55j))
-    # No factory provenance: the counted variant uses the layout subnet.
-    np.testing.assert_allclose(result["b_in", "b_out"], 0.0)
-    # An explicit alias supplies the missing provenance without suffix guessing.
-    aliased, _ = sax.circuit(recnet, {**models, "coupled2": _component}, backend="klu")
-    np.testing.assert_allclose(aliased(wl=1.55)["b_in", "b_out"], 0.3 * jnp.exp(1.55j))
+    np.testing.assert_allclose(result["a_in0", "a_out0"], 0.2 * jnp.exp(1.55j))
+    np.testing.assert_allclose(result["b_in0", "b_out0"], 0.3 * jnp.exp(1.55j))

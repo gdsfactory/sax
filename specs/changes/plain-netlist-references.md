@@ -3,9 +3,15 @@
 **Status: in development.** This is a breaking migration pass. Compatibility will
 be considered after the new path and its failing callers are visible.
 
+The subsequent decision for this development branch is no legacy adapters;
+the follow-up implementation is tracked in
+[remove-sax-netlist-layer](remove-sax-netlist-layer.md). Earlier audit counts below
+are historical evidence, not current test results.
+
 ## Intent and contract
 
-SAX consumes plain `kfnetlist.Netlist` objects in a `dict[str, Netlist]` document.
+SAX consumes plain `kfnetlist.Netlist` objects in a
+`kfnetlist.HierarchicalNetlist` document.
 A `RefNetlistInstance.netlist_id` selects a child definition in that document.
 `component` remains the factory/model identity; a model for a reference ID may
 replace that specific child, followed by qualified and unqualified factory models.
@@ -14,13 +20,16 @@ factory name nor uses placement as a hierarchy identifier. kfnetlist validates
 missing references and cycles when SAX ingests the document. Ordinary leaf models
 and the numerical backends keep their existing behavior.
 
-SAX uses kfnetlist's `main` Git branch as a development dependency, locked to the
+SAX uses kfnetlist's `sax` Git branch as a development dependency, locked to the
 resolved commit in `uv.lock`. This is deliberately not a released-package contract.
 
 ## Scope and verification
 
 Replace `PlacedNetlist` construction, deserialization, resolution, copying, and
-flattening in the native SAX path. Add tests for plain object/dict/JSON documents,
+flattening in the native SAX path. Make public `sax.Netlist` the kfnetlist class;
+replace the old `netlists.py` dictionary algorithms, kfnetlist parser conversion,
+and public YAML loader returns. Retain only backend-specific flat tables. Add
+tests for plain object/dict/JSON documents,
 model substitution, reference traversal, flattening, and dangling references.
 Run the existing suite to identify behavior needing deliberate compatibility work.
 Do not silently restore old cell-name inference or placed-instance handling during
@@ -33,6 +42,36 @@ this pass. Record failures and decide what to restore at the end of the PR.
 - Should legacy SAX dictionaries with `cell` or `placements` be adapted into
   explicit `netlist_id` references and a separate placement settings table?
 - Which public transform/parser return types must retain older placed behavior?
+
+## Public API replacement audit (2026-09-23)
+
+`sax.Netlist` and `sax.saxtypes.Netlist` now name `kfnetlist.Netlist`.
+`sax.netlist`, flattening, renaming, pruning, kfnetlist parsers, and the public
+YAML loaders use plain netlist objects or `HierarchicalNetlist`. The old SAX
+dictionary implementation in `netlists.py` was removed; its two remaining
+connection helpers operate only on flat backend tables. The focused
+explicit-reference suite passed 11 tests.
+
+The subsequent non-notebook run passed 393 tests, failed 85, and skipped one.
+This includes the earlier migration failures plus tests for the deliberately
+removed SAX dictionary constructors, parser returns, public YAML loader returns,
+and old dictionary transforms. It is an audit, not a passing release gate.
+
+## Upstream hierarchy object (2026-09-25)
+
+kfnetlist `sax` commits `9c5623d` through `d341152` add a Rust-backed
+`HierarchicalNetlist` with
+ordered entries, live mutable children, validation at construction and before
+serialization/flattening, and methods for one-root or all-entry flattening. Its
+JSON remains the existing `{id: netlist}` map. SAX now exports this as
+`RecursiveNetlist`, returns it from public hierarchy constructors/loaders, and
+accepts it as circuit input. Focused SAX tests passed 12/12. The subsequent
+non-notebook SAX run passed 394, failed 85, and skipped one: the failure count
+is unchanged from the public-API replacement audit, with one new passing test.
+kfnetlist passed 310 Python tests (4 skipped, with Pydantic installed) and all
+Rust workspace tests.
+The later removal of legacy input adapters and SAX netlist modules is tracked
+in [remove-sax-netlist-layer](remove-sax-netlist-layer.md).
 
 ## First compatibility audit (2026-09-23)
 

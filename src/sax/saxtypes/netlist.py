@@ -1,20 +1,17 @@
 """SAX netlist type definitions.
 
-This module defines the type system for optical circuit netlists, including
-component instances, connections, ports, and placements. It provides both
-flat and hierarchical netlist representations.
+SAX backend table types and the canonical kfnetlist netlist aliases.
 """
 
 from __future__ import annotations
 
-import warnings
 from functools import partial
 from typing import Annotated, Any, NotRequired, TypeAlias, cast
 
+from kfnetlist import HierarchicalNetlist, Netlist
 from typing_extensions import TypedDict
 
-from sax.saxtypes.core import Name, bval, val, val_name
-from sax.saxtypes.into import into, try_into
+from sax.saxtypes.core import bval, val, val_name
 from sax.saxtypes.settings import Settings
 from sax.saxtypes.singlemode import InstanceName, InstancePort, Port
 
@@ -284,99 +281,11 @@ Nets: TypeAlias = list[Net]
 """A list of logical connections between ports."""
 
 
-def val_netlist(obj: Any) -> dict:
-    if not isinstance(obj, dict):
-        msg = f"Expected a dictionary for recursive netlist, got {type(obj)}."
-        raise TypeError(msg)
+RecursiveNetlist: TypeAlias = HierarchicalNetlist
+"""A validated kfnetlist document with mutable child netlists."""
 
-    obj = {**obj}
-
-    nets = list(obj.pop("nets", []))
-
-    if "routes" in obj:
-        for bundle_name, bundle in obj["routes"].items():
-            if not isinstance(bundle, dict):
-                msg = f"Expected a dictionary for routes, got {type(bundle)}."
-                raise TypeError(msg)
-            if "links" not in bundle:
-                msg = "Each route bundle must contain a 'links' key."
-                raise TypeError(msg)
-            for p1, p2 in bundle["links"].items():
-                p1 = into[InstancePort](p1)
-                p2 = into[InstancePort](p2)
-                nets.append({"p1": p1, "p2": p2, "name": bundle_name})
-
-    obj["nets"] = nets
-    fields = (
-        "instances",
-        "connections",
-        "ports",
-        "nets",
-        "placements",
-        "settings",
-    )
-    return extract_fields(obj, fields=fields)
-
-
-Netlist = Annotated[
-    TypedDict(
-        "Netlist",
-        {
-            "instances": Instances,
-            "connections": NotRequired[Connections],
-            "ports": NotRequired[Ports],
-            "nets": NotRequired[Nets],
-            "placements": NotRequired[Placements],
-            "settings": NotRequired[Settings],
-        },
-    ),
-    bval(val_netlist),
-]
-"""A complete netlist definition for an optical circuit.
-
-Contains all information needed to define a circuit: instances,
-connections, external ports, and optional placement/settings.
-
-Attributes:
-    instances: The component instances in the circuit.
-    connections: Point-to-point connections between instances.
-    ports: Mapping of external ports to internal instance ports.
-    nets: Alternative connection specification as a list.
-    placements: Physical placement information for instances.
-    settings: Global circuit settings.
-"""
-
-
-def val_recnet(obj: Any) -> RecursiveNetlist:
-    if not isinstance(obj, dict):
-        msg = f"Expected a dictionary for recursive netlist, got {type(obj)}."
-        raise TypeError(msg)
-
-    net = try_into[Netlist](obj)
-    if net is not None:
-        msg = f"Expected a recursive netlist, got a flat netlist: {net}."
-        raise TypeError(msg)
-
-    ret = {}
-    for name, netlist in obj.items():
-        name = into[Name](name)
-        net = try_into[Netlist](netlist)
-        if net is None:
-            msg = (
-                f"Could not validate netlist for {name!r}. "
-                "This netlist will be ignored."
-            )
-            warnings.warn(msg, stacklevel=2)
-            continue
-        ret[name] = net
-    return ret
-
-
-RecursiveNetlist: TypeAlias = Annotated[dict[Name, Netlist], val(val_recnet)]
-"""A hierarchical netlist containing multiple named circuits."""
-
-AnyNetlist: TypeAlias = Netlist | RecursiveNetlist | dict[str, dict[str, str]]
-"""Any valid netlist format: flat, recursive, or simplified dictionary."""
+AnyNetlist: TypeAlias = Netlist | RecursiveNetlist
+"""A plain netlist or a referenced netlist document."""
 
 
 def _instance_from_partial(p: partial) -> Instance:

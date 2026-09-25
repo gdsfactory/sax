@@ -5,18 +5,17 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Iterable, Iterator, Mapping
-from functools import partial
 from typing import Any, Literal, cast, overload
 
 import networkx as nx
 import numpy as np
+from kfnetlist import HierarchicalNetlist, Netlist
 
 import sax
 
-from . import native
+from . import _circuit_compiler as compiler
 from .backends import circuit_backends
 from .models.probes import ideal_probe
-from .netlists import _connections_to_nets
 from .s import get_ports, scoo, sdense, sdict
 from .utils import get_settings, merge_dicts, replace_kwargs, update_settings
 
@@ -25,7 +24,7 @@ __all__ = ["circuit", "draw_dag", "get_required_circuit_models"]
 
 @overload
 def circuit(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
@@ -38,7 +37,7 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
@@ -52,7 +51,7 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
@@ -66,7 +65,7 @@ def circuit(
 
 @overload
 def circuit(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
@@ -79,7 +78,7 @@ def circuit(
 
 
 def circuit(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     backend: sax.BackendLike = "default",
@@ -96,18 +95,15 @@ def circuit(
     can be called with parameters to evaluate the overall S-matrix.
 
     Args:
-        netlist: Circuit netlist specifying instances, connections, and ports.
-            Accepts native Netlist objects, native JSON, legacy
-            dictionaries, or a hierarchy mapping with explicit child cell identities.
-        models: Dictionary mapping component names to their model functions.
-            If None, models must be provided in the netlist itself.
+        netlist: A kfnetlist Netlist or HierarchicalNetlist.
+        models: Dictionary mapping factory, library-qualified, or reference IDs
+            to model functions. Leaf instances need a matching model.
         backend: Circuit analysis backend to use. Options include "default",
             "klu", "filipsson_gunnar", "additive". Defaults to "default".
         return_type: Format of the returned S-matrix. Options: "SDict", "SDense",
             "SCoo". Defaults to "SDict".
-        top_level_name: Name of the top-level circuit in recursive netlists.
-            An explicit name wins over PIC ``toplevel``; otherwise select
-            ``top_level`` when present, then the first hierarchy entry.
+        top_level_name: Name of the root in a hierarchy. Defaults to
+            ``top_level`` when present, then the first document entry.
         ignore_impossible_connections: If True, ignore connections to missing
             instance ports instead of raising an error. Defaults to False.
         probes: Optional dictionary mapping probe names to instance ports where
@@ -118,7 +114,7 @@ def circuit(
         on_internal_port: How to handle top-level ports that map to internal
             connection nodes. ``"warn"`` (default) drops them with a warning,
             ``"ignore"`` drops them silently, ``"as_probes"`` converts them
-            to measurement probes (legacy behaviour).
+            to measurement probes.
 
     Returns:
         Tuple containing:
@@ -138,14 +134,13 @@ def circuit(
             return {("in", "out"): np.exp(1j * phase)}
 
 
-        # Create netlist
-        netlist = {
-            "instances": {
-                "wg1": {"component": "waveguide", "settings": {"length": 20.0}}
-            },
-            "connections": {},
-            "ports": {"in": "wg1,in", "out": "wg1,out"},
-        }
+        from kfnetlist import Netlist, NetlistPort, PortRef
+
+        netlist = Netlist()
+        netlist.create_inst("wg1", "pdk", "waveguide", {"length": 20.0})
+        for port in ("in", "out"):
+            netlist.create_port(port)
+            netlist.create_net(NetlistPort(name=port), PortRef("wg1", port))
 
         # Create circuit
         models = {"waveguide": waveguide}
@@ -157,12 +152,9 @@ def circuit(
     """
     _backend = sax.into[sax.Backend](backend)
 
-    if _is_native_json(netlist):
-        netlist = json.loads(netlist) if isinstance(netlist, str) else netlist
     merged_models: sax.Models = dict(models or {})
-    prepared = _replace_callable_instances(netlist, merged_models)
-    return _circuit_native(
-        prepared,
+    return _compile_circuit(
+        netlist,
         merged_models,
         backend=_backend,
         return_type=return_type,
@@ -173,74 +165,30 @@ def circuit(
     )
 
 
-def _reserved_netlist_keys(netlist: object) -> set[str]:
-    reserved: set[str] = set()
-    pending = [netlist]
-    while pending:
-        data = pending.pop()
-        if not isinstance(data, Mapping):
-            continue
-        reserved.update(str(key) for key in data)
-        for inst in data.get("instances", {}).values():
-            if isinstance(inst, str):
-                reserved.add(inst)
-            elif isinstance(inst, Mapping):
-                reserved.add(str(inst.get("component", "")))
-                reserved.add(str(inst.get("cell", "")))
-        if "instances" not in data:
-            pending.extend(data.values())
-    return reserved
+def _document(
+    netlist: Netlist | HierarchicalNetlist, root_name: str | None
+) -> tuple[dict[str, Netlist], str]:
+    """Select a validated kfnetlist document and its simulation root."""
+    if type(netlist) is Netlist:
+        root = root_name or "top_level"
+        document = HierarchicalNetlist({root: netlist})
+    elif isinstance(netlist, HierarchicalNetlist):
+        document = netlist
+        document.validate()
+        root = root_name or (
+            "top_level" if "top_level" in document else next(iter(document), None)
+        )
+    else:
+        msg = "Expected a kfnetlist.Netlist or kfnetlist.HierarchicalNetlist."
+        raise TypeError(msg)
+    if root is None or root not in document:
+        msg = f"Unknown top-level netlist {root!r}; available IDs: {list(document)!r}."
+        raise ValueError(msg)
+    return dict(document.items()), root
 
 
-def _replace_callable_instances(netlist: Any, models: sax.Models) -> Any:  # noqa: ANN401
-    """Bind direct callables per instance and preserve keyword-partial settings."""
-    if native.is_native(netlist) or native.is_native_hierarchy(netlist):
-        return netlist
-    reserved = set(models) | _reserved_netlist_keys(netlist)
-
-    def replace(data: Any) -> Any:  # noqa: ANN401
-        if not isinstance(data, Mapping):
-            return data
-        if "instances" not in data:
-            return {key: replace(value) for key, value in data.items()}
-        instances = {}
-        for name, inst in data["instances"].items():
-            if not callable(inst):
-                instances[name] = inst
-                continue
-            model = inst
-            settings: sax.Settings = {}
-            while isinstance(model, partial):
-                if model.args:
-                    msg = (
-                        "SAX circuits don't support partials with positional arguments."
-                    )
-                    raise ValueError(msg)
-                settings = {**model.keywords, **settings}
-                model = model.func
-            index = len(models)
-            key = f"_sax_callable_{index}"
-            while key in reserved:
-                index += 1
-                key = f"_sax_callable_{index}"
-            reserved.add(key)
-            models[key] = cast(sax.Model, model)
-            instances[name] = {"component": key, "settings": settings}
-        return {**data, "instances": instances}
-
-    return replace(netlist)
-
-
-def _is_native_json(netlist: object) -> bool:
-    """Return whether *netlist* is a JSON string encoding native kfnetlist data."""
-    if not isinstance(netlist, str):
-        return False
-    text = netlist.lstrip()
-    return text.startswith("{") and '"instances"' in text
-
-
-def _native_dag(
-    cells: native.NativeHierarchy,
+def _definition_dag(
+    cells: dict[str, Netlist],
     root: str,
     models: sax.Models,
     *,
@@ -256,11 +204,11 @@ def _native_dag(
             continue
         visited.add(cell_name)
         for name, inst in cells[cell_name].instances.items():
-            key = native.resolve(inst, models, cells)
+            key = compiler.resolve(inst, models, cells)
             if key is None:
                 if require_models:
                     raise ValueError(
-                        native.missing_model_message(inst, f"{path}.{name}")
+                        compiler.missing_model_message(inst, f"{path}.{name}")
                     )
                 key = inst.component
             g.add_edge(cell_name, key)
@@ -269,27 +217,21 @@ def _native_dag(
     return _validate_dag(g)
 
 
-def _prepare_native_circuit(
-    netlist: object,
+def _prepare_circuit(
+    netlist: Netlist | HierarchicalNetlist,
     models: sax.Models,
     top_level_name: str | None,
     probes: dict[str, str] | None,
 ) -> tuple[
-    native.NativeHierarchy,
+    dict[str, Netlist],
     str,
-    native.HierarchySettings,
     dict[str, str],
     dict[str, dict[str, str]],
     dict[str, list[tuple[str, str]]],
 ]:
-    python_settings: native.HierarchySettings = {}
-    cells, root = native.to_hierarchy(
-        netlist,
-        top_level_name=top_level_name,
-        settings_table=python_settings,
-    )
+    cells, root = _document(netlist, top_level_name)
 
-    top_probes, per_cell_probes, probe_paths = native.plan_hierarchical_probes(
+    top_probes, per_cell_probes, probe_paths = compiler.plan_hierarchical_probes(
         cells, root, models, probes or {}
     )
     keep = {cell: tuple(targets.values()) for cell, targets in per_cell_probes.items()}
@@ -298,29 +240,25 @@ def _prepare_native_circuit(
         for instance, parent in path:
             keep[parent] = (*keep.get(parent, ()), instance)
     cells = {
-        name: native.remove_unused_instances(nl, keep=keep.get(name, ()))
+        name: compiler.prune_unconnected_instances(nl, keep=keep.get(name, ()))
         for name, nl in cells.items()
     }
-    return cells, root, python_settings, top_probes, per_cell_probes, probe_paths
+    return cells, root, top_probes, per_cell_probes, probe_paths
 
 
 def _prepare_cell_tables(
-    nl: native.Netlist,
+    nl: Netlist,
     model_name: str,
     root: str,
     models: sax.Models,
-    cells: native.NativeHierarchy,
-    python_settings: native.HierarchySettings,
+    cells: dict[str, Netlist],
     extra_ports: dict[str, dict[str, str]],
     top_probes: dict[str, str],
     per_cell_probes: dict[str, dict[str, str]],
     on_internal_port: str,
 ) -> tuple[sax.Instances, sax.Nets, sax.Ports, bool]:
-    instances, nets, ports, bindings = native.lower_bindings(nl, models, cells)
+    instances, nets, ports, bindings = compiler.lower_bindings(nl, models, cells)
     for name, inst in instances.items():
-        saved = python_settings.get(model_name, {}).get(_strip_array_index(name))
-        if saved is not None:
-            inst["settings"] = saved
         key = bindings.get(name)
         if key is None:
             msg = (
@@ -341,13 +279,15 @@ def _prepare_cell_tables(
 
     probe_here: dict[str, str] = {}
     if model_name == root:
-        ports, auto_probes = native.handle_internal_ports(nets, ports, on_internal_port)
+        ports, auto_probes = compiler.handle_internal_ports(
+            nets, ports, on_internal_port
+        )
         probe_here.update(top_probes)
         probe_here.update(auto_probes)
     probe_here.update(per_cell_probes.get(model_name, {}))
 
     if probe_here:
-        instances, nets, ports = native.expand_probes_tables(
+        instances, nets, ports = compiler.expand_probes_tables(
             instances, nets, ports, probe_here
         )
 
@@ -361,8 +301,8 @@ def _prepare_cell_tables(
     return instances, nets, ports, bool(probe_here)
 
 
-def _circuit_native(
-    netlist: object,
+def _compile_circuit(
+    netlist: Netlist | HierarchicalNetlist,
     models: sax.Models | None,
     *,
     backend: sax.Backend,
@@ -373,10 +313,10 @@ def _circuit_native(
     on_internal_port: Literal["warn", "ignore", "as_probes"],
 ) -> tuple[sax.Model, sax.CircuitInfo]:
     models = dict(models or {})
-    cells, root, python_settings, top_probes, per_cell_probes, probe_paths = (
-        _prepare_native_circuit(netlist, models, top_level_name, probes)
+    cells, root, top_probes, per_cell_probes, probe_paths = _prepare_circuit(
+        netlist, models, top_level_name, probes
     )
-    dependency_dag = _native_dag(cells, root, models, require_models=True)
+    dependency_dag = _definition_dag(cells, root, models, require_models=True)
     models = _validate_models(models, dependency_dag)
 
     extra_ports: dict[str, dict[str, str]] = {}
@@ -407,7 +347,6 @@ def _circuit_native(
             root,
             models,
             cells,
-            python_settings,
             extra_ports,
             top_probes,
             per_cell_probes,
@@ -419,10 +358,8 @@ def _circuit_native(
             available["_ideal_probe"] = ideal_probe
         current_models[model_name] = circuit = _flat_circuit(
             instances,
-            {},
             nets,
             ports,
-            {},
             available,
             backend,
             ignore_impossible_connections=ignore_impossible_connections,
@@ -471,7 +408,7 @@ def draw_dag(dag: nx.DiGraph, *, with_labels: bool = True, **kwargs: Any) -> Non
 
 
 def get_required_circuit_models(
-    netlist: Mapping[str, Any] | native.Netlist | str,
+    netlist: Netlist | HierarchicalNetlist,
     models: Mapping[str, sax.Model] | None = None,
     *,
     top_level_name: str | None = None,
@@ -510,32 +447,27 @@ def get_required_circuit_models(
         ```
     """
     merged: sax.Models = dict(models or {})
-    prepared = _replace_callable_instances(netlist, merged)
-    cells, root = native.to_hierarchy(
-        prepared,
-        top_level_name=top_level_name,
-        settings_table={},
-    )
-    cells = {name: native.remove_unused_instances(nl) for name, nl in cells.items()}
-    dependency_dag = _native_dag(cells, root, merged)
+    cells, root = _document(netlist, top_level_name)
+    cells = {
+        name: compiler.prune_unconnected_instances(nl) for name, nl in cells.items()
+    }
+    dependency_dag = _definition_dag(cells, root, merged)
     _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
 
 
 def _flat_circuit(
     instances: sax.Instances,
-    connections: sax.Connections,
     nets: sax.Nets,
     ports: sax.Ports,
-    placements: Mapping[str, Mapping[str, Any]],
     models: sax.Models,
     backend: sax.Backend,
     *,
     ignore_impossible_connections: bool = False,
 ) -> sax.Model:
     analyze_insts_fn, analyze_fn, evaluate_fn = circuit_backends[backend]
-    # Backend discovery validates legacy component identifiers. Native model/cell
-    # identities may contain library separators, so give that boundary local IDs.
+    # Backend discovery validates Python identifiers. Model keys may contain
+    # library separators, so give that boundary local IDs.
     model_ids = {
         component: f"_model_{i}"
         for i, component in enumerate(
@@ -551,9 +483,8 @@ def _flat_circuit(
     inst_port_mode = {
         k: _port_modes_dict(get_ports(s)) for k, s in dummy_instances.items()
     }
-    all_nets = _connections_to_nets(connections) + list(nets)
-    all_nets = _get_multimode_nets(
-        all_nets,
+    expanded_nets = _get_multimode_nets(
+        nets,
         inst_port_mode,
         ignore_impossible_connections=ignore_impossible_connections,
     )
@@ -576,17 +507,9 @@ def _flat_circuit(
         }
         for name, inst in instances.items()
     }
-    for name, settings in netlist_settings.items():
-        if (
-            "placement" in model_settings[name]
-            and _strip_array_index(name) in placements
-        ):
-            settings["placement"] = sax.into[sax.Placement](
-                placements[_strip_array_index(name)]
-            )
     default_settings = merge_dicts(model_settings, netlist_settings)
     default_settings = {_strip_array_index(k): v for k, v in default_settings.items()}
-    analyzed = analyze_fn(dummy_instances, all_nets, ports)
+    analyzed = analyze_fn(dummy_instances, expanded_nets, ports)
 
     def _circuit(**settings: sax.SettingsValue) -> sax.SType:
         full_settings = merge_dicts(default_settings, settings)
