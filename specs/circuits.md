@@ -25,11 +25,12 @@ model, info = sax.circuit(net, {"straight": straight_model})
 
 An instance records a library, component, settings, and optionally an explicit
 child `netlist_id`. SAX does not infer a child from the component name. kfnetlist
-owns netlist validation, serialization, and generic transforms. SAX translates
-valid topology into flat backend tables and requires a constructed root to expose
-at least one port.
+owns netlist validation, serialization, and generic transforms. SAX keeps
+instances, nets, and ports as kfnetlist objects through compilation and mode
+expansion. Backends derive numerical endpoint indices from the compiled netlist.
+The constructed root must expose at least one port.
 
-Evidence: [`saxtypes/netlist.py`](../src/sax/saxtypes/netlist.py),
+Evidence: [`saxtypes/__init__.py`](../src/sax/saxtypes/__init__.py),
 [`circuits.py`](../src/sax/circuits.py), and
 [`_circuit_compiler.py`](../src/sax/_circuit_compiler.py).
 Tests: [`test_explicit_netlist_hierarchy.py`](../src/tests/test_explicit_netlist_hierarchy.py).
@@ -42,7 +43,8 @@ DAG, constructed/resolved component models, and canonical backend name.
 
 Construction validates the hierarchy, plans probes, and prunes instances
 disconnected from ports or probe roots before validating model dependencies.
-Compilation expands arrays, handles internal ports, and inserts probes.
+Compilation asks kfnetlist to expand arrays, then handles internal ports and
+inserts probes.
 Dependencies are constructed leaf-first; an explicitly supplied model can stand
 in for a referenced child. Missing leaf models raise `ValueError` with model
 diagnostics. Hierarchy must be acyclic even when optical wiring has feedback.
@@ -53,9 +55,10 @@ placed instances. Array instances expand to `name<column.row>`; evaluation uses
 the base instance's settings for every element.
 
 Generic flattening is `HierarchicalNetlist.flatten(root, separator=...)` in
-kfnetlist. SAX no longer wraps flattening, copying, renaming, or pruning as public
-netlist operations. Its private pruning keeps only instances needed for circuit
-simulation, including probe roots.
+kfnetlist. `Netlist.prune_unconnected(keep_instances=...)` retains components
+reachable from declared ports or probe roots. `Netlist.expand_arrays()` creates
+scalar instances and rewrites array references. SAX supplies probe roots and
+applies its solver-specific pairwise wiring rules after those transformations.
 
 ## Native model keys and API boundary
 
@@ -70,9 +73,9 @@ explicit child `netlist_id`. Leaf instances have no child fallback.
 Missing-model errors identify the instance path, library, factory, reference,
 and attempted keys.
 
-Native keys remain unchanged in dependency information. Backend discovery uses
-local identifier aliases so the existing lowered-table validators do not restrict
-qualified identities. This is backend-table validation, not canonical topology.
+Native keys remain unchanged in dependency information. Model bindings are held
+separately from kfnetlist instances during backend discovery, so qualified model
+names do not alter the circuit topology.
 SAX no longer exposes kfnetlist parser, YAML loader, or legacy PIC adapter
 functions. Construct or deserialize netlist objects with kfnetlist, then pass
 them to `sax.circuit`. Root selection is described above and in
@@ -104,7 +107,8 @@ recognizes additional aliases/types, but unsupported return types raise `ValueEr
 `test_api_contracts.py` verifies rejection and all three documented formats.
 
 Evidence: [`circuits.py`](../src/sax/circuits.py) (`circuit`, `_flat_circuit`,
-`_forward_global_settings`, `resolve_array_instances`),
+`_forward_global_settings`) and
+[`_circuit_compiler.py`](../src/sax/_circuit_compiler.py) (`lower_bindings`),
 [`utils.py`](../src/sax/utils.py) (`get_settings`, `merge_dicts`, `update_settings`).
 Baseline smoke checks exercised globals, explicit overrides, JIT, and gradients
 for a two-instance circuit using KLU and FG; see [verification](verification.md).
@@ -142,7 +146,7 @@ taps through parents. Invalid hierarchy paths and generated name collisions rais
 acquire additional internal probe structure. Probes are nonphysical copying
 instruments, not energy-conserving splitters.
 
-Evidence: `expand_probes_tables` in [`_circuit_compiler.py`](../src/sax/_circuit_compiler.py),
+Evidence: `expand_probes` in [`_circuit_compiler.py`](../src/sax/_circuit_compiler.py),
 [`models/probes.py`](../src/sax/models/probes.py).
 Tests: [`test_probes.py`](../src/tests/test_probes.py), notably forward direction,
 non-perturbation, boundary/unconnected cases, hierarchy, conflicts, and internal
@@ -165,9 +169,8 @@ probe paths; a root with no effective ports after transformations is rejected wi
 the at-least-one-port diagnostic. Array index dots are not hierarchy separators,
 and runtime array settings remain keyed by the base instance name.
 
-Current object-path evidence: `test_explicit_netlist_hierarchy.py` and
-`test_smoke.py`. Older topology/probe tests still need migration from legacy
-dictionary and module imports.
+Current object-path evidence: `test_explicit_netlist_hierarchy.py`,
+`test_kfnetlist_compilation.py`, `test_native_topology.py`, and `test_probes.py`.
 
 ## Root selection and removed adapters
 

@@ -36,9 +36,8 @@ from typing import (
     TypeAlias,
 )
 
-from .core import ComplexArray, IntArray1D, Name, val
+from .core import ComplexArray, IntArray1D, Name, cast_string, val
 from .singlemode import (
-    cast_string,
     val_callable_annotated,
     val_not_callable_annotated,
     val_port,

@@ -1,22 +1,21 @@
-"""Simulation-specific compilation from kfnetlist topology to backend tables."""
+"""Simulation-specific compilation of kfnetlist topology."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from itertools import pairwise
 from typing import Any
 
 from kfnetlist import (
+    LeafNetlistInstance,
+    Net,
     Netlist,
     NetlistInstance,
     NetlistPort,
-    PortArrayRef,
     PortRef,
     RefNetlistInstance,
 )
-
-from .saxtypes.netlist import Instance, Instances, Nets
 
 
 def _split_array_endpoint(endpoint: str) -> tuple[str, str, int | None, int | None]:
@@ -40,38 +39,11 @@ def _expanded_name(name: str, i: int, j: int, na: int, nb: int) -> str:
     return f"{name}<{i}.{j}>"
 
 
-def _member_endpoint(
-    member: NetlistPort | PortRef | PortArrayRef,
-    array_sizes: Mapping[str, tuple[int, int]],
-) -> str | None:
-    if isinstance(member, NetlistPort):
-        return None
-    if member.instance not in array_sizes:
-        msg = f"Net references unknown instance {member.instance!r}."
-        raise ValueError(msg)
-    if isinstance(member, PortArrayRef):
-        na, nb = array_sizes[member.instance]
-        if not (1 <= member.ia <= na and 1 <= member.ib <= nb):
-            msg = f"Array reference {member!r} is outside its declared dimensions."
-            raise ValueError(msg)
-        key = _expanded_name(
-            member.instance,
-            member.ia - 1,
-            member.ib - 1,
-            *array_sizes.get(member.instance, (1, 1)),
-        )
-        return f"{key},{member.port}"
-    key = _expanded_name(
-        member.instance, 0, 0, *array_sizes.get(member.instance, (1, 1))
-    )
-    return f"{key},{member.port}"
-
-
 def _record_external_ports(
     externals: list[NetlistPort],
-    endpoints: list[str],
+    endpoints: list[PortRef],
     declared: set[str],
-    ports: dict[str, str],
+    ports: dict[str, PortRef],
 ) -> None:
     for external in externals:
         if external.name not in declared:
@@ -84,7 +56,7 @@ def _record_external_ports(
         ports[external.name] = endpoint
 
 
-def _validate_external_ports(declared: set[str], ports: dict[str, str]) -> None:
+def _validate_external_ports(declared: set[str], ports: dict[str, PortRef]) -> None:
     missing = declared - ports.keys()
     if missing:
         msg = (
@@ -96,38 +68,44 @@ def _validate_external_ports(declared: set[str], ports: dict[str, str]) -> None:
         raise ValueError(msg)
 
 
-def lower(
-    nl: Netlist,
-) -> tuple[Instances, Nets, dict[str, str]]:
-    """Lower a kfnetlist Netlist to ``(instances, nets, ports)`` tables.
+def _build_netlist(
+    instances: Mapping[str, NetlistInstance],
+    ports: Iterable[str],
+    nets: Iterable[Net],
+) -> Netlist:
+    """Build a kfnetlist object from its typed instances, ports, and nets."""
+    result = Netlist()
+    for name, inst in instances.items():
+        array = inst.array
+        result.create_inst(
+            name,
+            inst.kcl,
+            inst.component,
+            inst.settings,
+            na=array.na if array is not None else 1,
+            nb=array.nb if array is not None else 1,
+            info=inst.info,
+            netlist_id=(
+                inst.netlist_id if isinstance(inst, RefNetlistInstance) else None
+            ),
+        )
+    for name in ports:
+        result.create_port(name)
+    for net in nets:
+        result.add_net(net)
+    return result
 
-    These flat tables are the compiled input to the numerical backends, not a
-    canonical netlist representation. Array instances are expanded to
-    ``name<column.row>`` entries (zero-based), matching SAX instance naming.
-    """
-    instances: Instances = {}
-    array_sizes: dict[str, tuple[int, int]] = {}
-    for name, inst in nl.instances.items():
-        arr = inst.array
-        na = max(int(arr.na), 1) if arr is not None else 1
-        nb = max(int(arr.nb), 1) if arr is not None else 1
-        array_sizes[name] = (na, nb)
-        for i in range(na):
-            for j in range(nb):
-                entry: Instance = {"component": inst.component}
-                if inst.settings:
-                    entry["settings"] = dict(inst.settings)
-                instances[_expanded_name(name, i, j, na, nb)] = entry
 
-    declared = {p.name for p in nl.ports}
-    ports: dict[str, str] = {}
-    nets: Nets = []
-    for net in nl.nets:
+def lower(nl: Netlist) -> Netlist:
+    """Apply SAX's pairwise solver rules to an array-expanded kfnetlist."""
+    expanded = nl.expand_arrays()
+    result = _build_netlist(expanded.instances, (p.name for p in expanded.ports), ())
+    declared = {p.name for p in expanded.ports}
+    ports: dict[str, PortRef] = {}
+    for net in expanded.nets:
         members = list(net)
         externals = [m for m in members if isinstance(m, NetlistPort)]
-        internal = [m for m in members if not isinstance(m, NetlistPort)]
-        endpoints = [_member_endpoint(m, array_sizes) for m in internal]
-        endpoints = [e for e in endpoints if e is not None]
+        endpoints = [m for m in members if isinstance(m, PortRef)]
         if externals and not endpoints:
             msg = (
                 "External-only nets are unsupported; connect each port to an instance."
@@ -141,9 +119,11 @@ def lower(
             raise ValueError(msg)
         _record_external_ports(externals, endpoints, declared, ports)
         for a, b in pairwise(endpoints):
-            nets.append({"p1": a, "p2": b})
+            result.create_net(a, b)
     _validate_external_ports(declared, ports)
-    return instances, nets, ports
+    for name, ref in ports.items():
+        result.create_net(NetlistPort(name), ref)
+    return result
 
 
 def resolve(
@@ -205,14 +185,9 @@ def lower_bindings(
     nl: Netlist,
     models: Mapping[str, Any],
     cells: Mapping[str, Any],
-) -> tuple[
-    Instances,
-    Nets,
-    dict[str, str],
-    dict[str, str | None],
-]:
+) -> tuple[Netlist, dict[str, str | None]]:
     """Lower *nl* and resolve every expanded instance to a model/cell key."""
-    instances, nets, ports = lower(nl)
+    expanded = lower(nl)
     bindings: dict[str, str | None] = {}
     for name, inst in nl.instances.items():
         arr = inst.array
@@ -222,30 +197,55 @@ def lower_bindings(
         for i in range(na):
             for j in range(nb):
                 bindings[_expanded_name(name, i, j, na, nb)] = key
-    return instances, nets, ports, bindings
+    return expanded, bindings
 
 
-def _endpoint_instance(endpoint: str) -> str:
-    return endpoint.split(",", 1)[0]
+def port_ref(endpoint: str) -> PortRef:
+    """Parse a probe endpoint into a kfnetlist port reference."""
+    instance, separator, port = endpoint.partition(",")
+    if not separator or not instance or not port:
+        msg = f"Expected an instance port like 'instance,port'; got {endpoint!r}."
+        raise ValueError(msg)
+    return PortRef(instance, port)
+
+
+def add_external_ports(nl: Netlist, ports: Mapping[str, str]) -> Netlist:
+    """Attach generated parent-facing probe ports to a compiled netlist."""
+    result = Netlist.from_dict(nl.to_dict())
+    for name, endpoint in ports.items():
+        if any(p.name == name for p in result.ports):
+            msg = f"Hierarchical probe port {name!r} conflicts with an existing port."
+            raise ValueError(msg)
+        result.create_port(name)
+        result.create_net(NetlistPort(name), port_ref(endpoint))
+    return result
 
 
 def handle_internal_ports(
-    nets: Nets,
-    ports: dict[str, str],
+    nl: Netlist,
     on_internal_port: str,
-) -> tuple[dict[str, str], dict[str, str]]:
+) -> tuple[Netlist, dict[str, str]]:
     """Drop or convert external ports that target internal connection nodes."""
     import warnings
 
-    internal: set[str] = set()
-    for net in nets:
-        internal.add(net["p1"])
-        internal.add(net["p2"])
+    internal: set[PortRef] = set()
+    attached: dict[str, PortRef] = {}
+    for net in nl.nets:
+        refs = [member for member in net if isinstance(member, PortRef)]
+        externals = [member for member in net if isinstance(member, NetlistPort)]
+        if externals:
+            for external in externals:
+                attached[external.name] = refs[0]
+        elif len(refs) >= 2:
+            internal.update(refs)
     probes: dict[str, str] = {}
-    kept: dict[str, str] = {}
-    for name, endpoint in ports.items():
-        if endpoint not in internal:
-            kept[name] = endpoint
+    kept: list[str] = []
+    for port in nl.ports:
+        name = port.name
+        ref = attached[name]
+        endpoint = f"{ref.instance},{ref.port}"
+        if ref not in internal:
+            kept.append(name)
             continue
         if on_internal_port == "as_probes":
             warnings.warn(
@@ -263,43 +263,30 @@ def handle_internal_ports(
                 "probes.",
                 stacklevel=2,
             )
-    return kept, probes
+    surviving_nets = [
+        net
+        for net in nl.nets
+        if not any(
+            isinstance(member, NetlistPort) and member.name not in kept
+            for member in net
+        )
+    ]
+    return _build_netlist(nl.instances, kept, surviving_nets), probes
 
 
-def _intercept_probe_target(
-    nets: Nets,
-    ports: dict[str, str],
-    target: str,
-    probe_instance: str,
-) -> str | None:
-    for i, net in enumerate(nets):
-        if target in (net["p1"], net["p2"]):
-            nets.pop(i)
-            return net["p2"] if net["p1"] == target else net["p1"]
-    for pname, endpoint in ports.items():
-        if endpoint == target:
-            in_side = f"{probe_instance},in"
-            ports[pname] = in_side
-            return in_side
-    return None
-
-
-def expand_probes_tables(
-    instances: Instances,
-    nets: Nets,
-    ports: dict[str, str],
+def expand_probes(
+    nl: Netlist,
     probes: Mapping[str, str],
-) -> tuple[Instances, Nets, dict[str, str]]:
-    """Insert ideal probes into lowered topology tables.
+) -> Netlist:
+    """Insert ideal probes into a compiled kfnetlist object.
 
     ``_fwd`` measures the wave travelling into the targeted instance port.
     """
     if not probes:
-        return instances, nets, ports
-    instances = dict(instances)
-    ports = dict(ports)
-    nets = list(nets)
+        return nl
+    result = nl
     for probe_name, target in probes.items():
+        ports = [port.name for port in result.ports]
         fwd_port = f"{probe_name}_fwd"
         bwd_port = f"{probe_name}_bwd"
         if fwd_port in ports or bwd_port in ports:
@@ -309,22 +296,116 @@ def expand_probes_tables(
             )
             raise ValueError(msg)
         probe_instance = f"_probe_{probe_name}"
-        if probe_instance in instances:
+        if result.has_instance(probe_instance):
             msg = (
                 f"Probe instance name '{probe_instance}' conflicts with an "
                 "existing instance."
             )
             raise ValueError(msg)
 
-        in_side = _intercept_probe_target(nets, ports, target, probe_instance)
+        target_ref = port_ref(target)
+        in_ref = PortRef(probe_instance, "in")
+        out_ref = PortRef(probe_instance, "out")
+        nets = list(result.nets)
+        intercepted: PortRef | None = None
+        for index, net in enumerate(nets):
+            members = list(net)
+            if target_ref in members and all(isinstance(m, PortRef) for m in members):
+                intercepted = next(
+                    (m for m in members if isinstance(m, PortRef) and m != target_ref),
+                    None,
+                )
+                nets.pop(index)
+                break
+        if intercepted is not None:
+            nets.append(Net([intercepted, in_ref]))
+        else:
+            for index, net in enumerate(nets):
+                members = list(net)
+                if target_ref in members and any(
+                    isinstance(m, NetlistPort) for m in members
+                ):
+                    external = next(m for m in members if isinstance(m, NetlistPort))
+                    nets[index] = Net([external, in_ref])
+                    break
+        nets.append(Net([out_ref, target_ref]))
+        nets.append(Net([NetlistPort(fwd_port), PortRef(probe_instance, "tap_fwd")]))
+        nets.append(Net([NetlistPort(bwd_port), PortRef(probe_instance, "tap_bwd")]))
+        instances = result.instances
+        instances[probe_instance] = LeafNetlistInstance(
+            "sax", "_ideal_probe", name=probe_instance
+        )
+        result = _build_netlist(instances, [*ports, fwd_port, bwd_port], nets)
+    return result
 
-        instances[probe_instance] = {"component": "_ideal_probe"}
-        if in_side is not None and in_side != f"{probe_instance},in":
-            nets.append({"p1": in_side, "p2": f"{probe_instance},in"})
-        nets.append({"p1": f"{probe_instance},out", "p2": target})
-        ports[fwd_port] = f"{probe_instance},tap_fwd"
-        ports[bwd_port] = f"{probe_instance},tap_bwd"
-    return instances, nets, ports
+
+def expand_modes(  # noqa: C901
+    nl: Netlist,
+    instance_port_modes: Mapping[str, Mapping[str, set[str]]],
+    *,
+    ignore_impossible_connections: bool = False,
+) -> Netlist:
+    """Keep mode-expanded wiring in kfnetlist until solver analysis."""
+    result = _build_netlist(nl.instances, (), ())
+
+    def modes(ref: PortRef) -> set[str] | None:
+        try:
+            return instance_port_modes[ref.instance][ref.port]
+        except KeyError as error:
+            if ignore_impossible_connections:
+                return None
+            available = list(instance_port_modes[ref.instance])
+            msg = (
+                f"Instance {ref.instance} does not contain port {ref.port}. "
+                f"Available ports: {available}."
+            )
+            raise KeyError(msg) from error
+
+    for net in nl.nets:
+        refs = [member for member in net if isinstance(member, PortRef)]
+        external = next(
+            (member for member in net if isinstance(member, NetlistPort)), None
+        )
+        if external is not None:
+            ref = refs[0]
+            active = modes(ref)
+            if active is None:
+                continue
+            if not active:
+                result.create_port(external.name)
+                result.create_net(external, ref)
+            else:
+                for mode in sorted(active):
+                    name = f"{external.name}@{mode}"
+                    result.create_port(name)
+                    result.create_net(
+                        NetlistPort(name), PortRef(ref.instance, f"{ref.port}@{mode}")
+                    )
+            continue
+        if len(refs) < 2:
+            continue
+        left, right = refs
+        left_modes = modes(left)
+        right_modes = modes(right)
+        if left_modes is None or right_modes is None:
+            continue
+        if not left_modes and not right_modes:
+            result.add_net(net)
+        elif not left_modes or not right_modes:
+            msg = (
+                "trying to connect a multimode model to single mode model.\n"
+                "Please update your models dictionary.\n"
+                f"Problematic connection: '{left.instance},{left.port}':"
+                f"'{right.instance},{right.port}'"
+            )
+            raise ValueError(msg)
+        else:
+            for mode in sorted(left_modes & right_modes):
+                result.create_net(
+                    PortRef(left.instance, f"{left.port}@{mode}"),
+                    PortRef(right.instance, f"{right.port}@{mode}"),
+                )
+    return result
 
 
 def _validate_probe_name(nl: Netlist, name: str, *, insert_instance: bool) -> None:
@@ -401,32 +482,3 @@ def plan_hierarchical_probes(
         )
         paths[probe_name] = path
     return top, per_cell, paths
-
-
-def prune_unconnected_instances(
-    nl: Netlist,
-    *,
-    keep: tuple[str, ...] = (),
-) -> Netlist:
-    """Copy and prune instances disconnected from declared ports or probe roots."""
-    import networkx as nx
-
-    graph = nx.Graph()
-    graph.add_nodes_from(nl.instances)
-    roots = {endpoint.split(",", 1)[0].split("<", 1)[0] for endpoint in keep}
-    declared = {port.name for port in nl.ports}
-    for net in nl.nets:
-        members = list(net)
-        names = [m.instance for m in members if isinstance(m, (PortRef, PortArrayRef))]
-        graph.add_edges_from(pairwise(names))
-        if any(isinstance(m, NetlistPort) and m.name in declared for m in members):
-            roots.update(names)
-    reachable: set[str] = set()
-    for root in roots:
-        if root in graph:
-            reachable.update(nx.node_connected_component(graph, root))
-    result = Netlist.from_dict(nl.to_dict())
-    unused = [name for name in nl.instances if name not in reachable]
-    if unused:
-        result.remove_instances(unused)
-    return result

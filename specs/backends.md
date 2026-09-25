@@ -6,8 +6,8 @@ Backend names are case-insensitive. `fg` aliases `filipsson_gunnar`; `default`
 resolves to the registered default, normally `klu`. Unknown names raise `ValueError`.
 The registry maps each backend to three functions:
 
-1. `analyze_instances(instances, models)` discovers default component S-matrices.
-2. `analyze_circuit(analyzed_instances, nets, ports)` prepares static wiring.
+1. `analyze_instances(bindings, models)` discovers default component S-matrices.
+2. `analyze_circuit(analyzed_instances, netlist)` prepares static wiring.
 3. `evaluate_circuit(analyzed, instances)` combines evaluated component values.
 
 These are also available as lower-level APIs. Circuit construction wraps their
@@ -61,7 +61,7 @@ and repeated propagation through feedback; it is not forward path enumeration.
 Zero denominators/singular networks have no general regularization guarantee.
 
 Evidence: [`filipsson_gunnar.py`](../src/sax/backends/filipsson_gunnar.py),
-`_calculate_interconnected_value`. `_nets_to_connections_strict` rejects repeated
+`_calculate_interconnected_value`. `pairwise_connections_strict` rejects repeated
 endpoints for FG and additive.
 
 ### Removed forward backend

@@ -8,8 +8,6 @@ S-matrix representations and model validation functions.
 from __future__ import annotations
 
 __all__ = [
-    "InstanceName",
-    "InstancePort",
     "ModelFactorySM",
     "ModelSM",
     "ModelsSM",
@@ -40,40 +38,9 @@ from typing import (
     get_origin,
 )
 
-from .core import ComplexArray, IntArray1D, Name, cast_string, val, val_name
+from .core import ComplexArray, IntArray1D, Name, val, val_name
 
 T = TypeVar("T")
-
-
-def val_instance_name(obj: Any) -> Port:
-    """Validate an instance name allowing dots and angle brackets.
-
-    Args:
-        obj: The object to validate as an instance name.
-
-    Returns:
-        The validated instance name string.
-
-    Raises:
-        TypeError: If the string is not a valid instance name.
-
-    Examples:
-        Validate a string as an instance name:
-
-        ```python
-        import sax.saxtypes.singlemode as sm
-
-        # Valid instance names
-        result = sm.val_instance_name("coupler1")  # "coupler1"
-        result = sm.val_instance_name("mzi.left_arm")  # "mzi.left_arm"
-        result = sm.val_instance_name("array<0,1>")  # "array<0,1>"
-        ```
-    """
-    return val_name(obj, type_name="InstanceName", extra_allowed_chars=(".", "<", ">"))
-
-
-InstanceName: TypeAlias = Annotated[str, val(val_instance_name)]
-"""An instance name allowing allowing an array index suffix '<x.y>'."""
 
 
 def val_port(obj: Any) -> Port:
@@ -105,44 +72,6 @@ def val_port(obj: Any) -> Port:
 
 Port: TypeAlias = Annotated[str, val(val_port)]
 """A single-mode port name - must be a valid Python identifier."""
-
-
-def val_instance_port(obj: Any) -> InstancePort:
-    """Validate an instance port reference in 'instance,port' format.
-
-    Args:
-        obj: The object to validate as an instance port reference.
-
-    Returns:
-        The validated instance port string.
-
-    Raises:
-        TypeError: If the string is not a valid instance port reference.
-
-    Examples:
-        Validate a string as an instance port name:
-
-        ```python
-        import sax.saxtypes.singlemode as sm
-
-        # Valid instance port references
-        result = sm.val_instance_port("coupler1,in0")  # "coupler1,in0"
-        result = sm.val_instance_port("mzi.left,out")  # "mzi.left,out"
-        ```
-    """
-    s = cast_string(obj)
-    parts = s.split(",")
-    if len(parts) != 2:
-        msg = f"an InstancePort should have exactly one ','-separator. Got: {obj!r}"
-        raise TypeError(msg)
-    inst, port = parts
-    inst = val_instance_name(inst)
-    port = val_port(port)
-    return f"{inst},{port}"
-
-
-InstancePort: TypeAlias = Annotated[str, val(val_instance_port)]
-"""An instance port reference in the format 'instance_name,port_name'."""
 
 
 PortMapSM: TypeAlias = dict[Port, int]

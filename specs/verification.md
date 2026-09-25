@@ -1,5 +1,26 @@
 # Verification and evidence
 
+## KFNetlist end-to-end development branch
+
+SAX now uses kfnetlist `Netlist` and `HierarchicalNetlist` through circuit
+compilation and backend analysis. The kfnetlist `sax` branch provides native
+pruning, array expansion, and explicit references during plain layout
+extraction; `uv.lock` pins that branch at `3dc1d37f`.
+
+| Check | Result |
+| --- | --- |
+| Full SAX `src/tests` suite with isolated `sax` kernel and optional gdsfactory installed | **365 passed**, no skips, 123.72s |
+| kfnetlist Python suite with optional kfactory installed | **315 passed, 4 skipped** (the skips require an unavailable `Instance.info` API) |
+| Migrated public examples and internals | **14 notebooks executed successfully**, including layout-aware extraction and hierarchical circuits |
+| Changed compiler/circuit/backend/saxtypes Pyright check | **Passed**, zero errors |
+| Full SAX source Pyright | **6 baseline Touchstone annotation errors remain**; no migrated circuit errors |
+| Locked non-notebook run, `uv run --locked --no-default-groups --group test pytest src/tests --ignore=src/tests/test_nbs.py -q` | **361 passed**, no skips, 81.93s, built kfnetlist at `3dc1d37f` |
+| `uv lock --check` and `git diff --check` | **Passed** |
+
+The optional environment used an editable checkout of kfnetlist at the same
+source revision as the locked Git branch. Notebook execution used a temporary
+kernel prefix rather than changing the user's global kernel.
+
 ## Baseline runs
 
 Source revision: `9ebd77d0844b48dd1268066372db929946069f34` (SAX 0.18.2).

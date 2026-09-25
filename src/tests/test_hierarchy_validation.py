@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from kfnetlist import HierarchicalNetlist, Netlist, NetlistPort, PortRef
 
 import sax
 
@@ -11,25 +12,32 @@ import sax
 def test_dependency_cycles_have_explicit_diagnostic(
     components: tuple[str, ...],
 ) -> None:
-    rec = {
-        name: {
-            "instances": {"sub": {"component": components[(i + 1) % len(components)]}},
-            "ports": {"in": "sub,in", "out": "sub,out"},
-        }
-        for i, name in enumerate(components)
-    }
-    with pytest.raises(ValueError, match="dependency cycles"):
-        sax.circuit(rec)
-    with pytest.raises(ValueError, match="dependency cycles"):
-        sax.get_required_circuit_models(rec)
+    netlists = {}
+    for index, name in enumerate(components):
+        netlist = Netlist()
+        netlist.create_inst(
+            "sub",
+            "pdk",
+            "subcircuit",
+            netlist_id=components[(index + 1) % len(components)],
+        )
+        for port in ("in", "out"):
+            netlist.create_port(port)
+            netlist.create_net(NetlistPort(port), PortRef("sub", port))
+        netlists[name] = netlist
+    with pytest.raises(ValueError, match="cyclic"):
+        HierarchicalNetlist(netlists)
 
 
 def test_optical_feedback_is_not_a_hierarchy_cycle() -> None:
-    net = {
-        "instances": {"c": "coupler", "w": "waveguide"},
-        "connections": {"c,out1": "w,in0", "w,out0": "c,in1"},
-        "ports": {"in": "c,in0", "out": "c,out0"},
-    }
+    net = Netlist()
+    net.create_inst("c", "pdk", "coupler")
+    net.create_inst("w", "pdk", "waveguide")
+    net.create_net(PortRef("c", "out1"), PortRef("w", "in0"))
+    net.create_net(PortRef("w", "out0"), PortRef("c", "in1"))
+    for name, port in (("in", "in0"), ("out", "out0")):
+        net.create_port(name)
+        net.create_net(NetlistPort(name), PortRef("c", port))
     models = {"coupler": sax.models.coupler_ideal, "waveguide": sax.models.straight}
     klu, _ = sax.circuit(net, models, backend="klu")
     fg, _ = sax.circuit(net, models, backend="fg")

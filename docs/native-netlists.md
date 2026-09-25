@@ -41,9 +41,12 @@ traverses `arm_3`. `models["arm_3"]` can override that particular child. The
 reference must point to a netlist in the document. Construction validates
 references and rejects cycles. Child netlists remain mutable; call
 `document.validate()` after edits, or rely on hierarchy operations to validate
-before use. Plain `Netlist` objects carry no placement. The upstream
-extraction producer must emit explicit references for SAX to traverse an
-extracted hierarchy in this development pass.
+before use. Plain `Netlist` objects carry no placement. On the kfnetlist `sax`
+branch, `extract(..., include_placement=False)` emits `netlist_id` references
+to the child netlists in its returned document. Wrap that mapping in
+`HierarchicalNetlist` before passing it to SAX. Bind models using the
+extracted `component` factory IDs; gdsfactory may qualify them beyond a short
+function name such as `straight`.
 
 ## Model lookup
 
@@ -76,8 +79,10 @@ Explicit pairwise multilinks retain KLU's existing behavior; FG and additive
 retain their restrictions on multiply connected ports.
 
 Generic netlist operations, including document flattening, belong to
-kfnetlist. SAX keeps only model resolution, probe planning, and translation to
-backend tables for simulation.
+kfnetlist. SAX calls `Netlist.prune_unconnected()` and
+`Netlist.expand_arrays()` before applying model resolution and probe planning.
+Numerical backends derive their solver indices from the resulting kfnetlist
+topology.
 
 ## Development dependency
 

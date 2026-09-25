@@ -1,14 +1,36 @@
-"""Connection conversion for backends that require paired endpoints."""
+"""Derive solver wiring from kfnetlist without another netlist schema."""
 
-from sax.saxtypes.netlist import Connections, Nets
+from kfnetlist import Netlist, NetlistPort, PortRef
 
 
-def nets_to_connections_strict(nets: Nets) -> Connections:
+def _endpoint(ref: PortRef) -> str:
+    return f"{ref.instance},{ref.port}"
+
+
+def solver_wiring(netlist: Netlist) -> tuple[list[tuple[str, str]], dict[str, str]]:
+    """Return only the endpoint indices needed by SAX's numerical solvers."""
+    pairs: list[tuple[str, str]] = []
+    attached: dict[str, str] = {}
+    for net in netlist.nets:
+        refs = [member for member in net if isinstance(member, PortRef)]
+        external = [member for member in net if isinstance(member, NetlistPort)]
+        if external:
+            for port in external:
+                attached[port.name] = _endpoint(refs[0])
+        elif len(refs) == 2:
+            pairs.append((_endpoint(refs[0]), _endpoint(refs[1])))
+    ports = {port.name: attached[port.name] for port in netlist.ports}
+    return pairs, ports
+
+
+def pairwise_connections_strict(
+    pairs: list[tuple[str, str]],
+) -> dict[str, str]:
     """Reject repeated endpoints for backends that require paired connections."""
-    connections: Connections = {}
+    connections: dict[str, str] = {}
     seen: set[str] = set()
-    for net in nets:
-        for endpoint in (net["p1"], net["p2"]):
+    for left, right in pairs:
+        for endpoint in (left, right):
             if endpoint in seen:
                 msg = (
                     "Multiply connected ports are only supported with the 'klu' "
@@ -16,5 +38,5 @@ def nets_to_connections_strict(nets: Nets) -> Connections:
                 )
                 raise ValueError(msg)
             seen.add(endpoint)
-        connections[net["p1"]] = net["p2"]
+        connections[left] = right
     return connections

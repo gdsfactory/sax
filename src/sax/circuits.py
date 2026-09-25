@@ -240,13 +240,18 @@ def _prepare_circuit(
         for instance, parent in path:
             keep[parent] = (*keep.get(parent, ()), instance)
     cells = {
-        name: compiler.prune_unconnected_instances(nl, keep=keep.get(name, ()))
+        name: nl.prune_unconnected(
+            [
+                endpoint.split(",", 1)[0].split("<", 1)[0]
+                for endpoint in keep.get(name, ())
+            ]
+        )
         for name, nl in cells.items()
     }
     return cells, root, top_probes, per_cell_probes, probe_paths
 
 
-def _prepare_cell_tables(
+def _prepare_cell_netlist(
     nl: Netlist,
     model_name: str,
     root: str,
@@ -256,49 +261,49 @@ def _prepare_cell_tables(
     top_probes: dict[str, str],
     per_cell_probes: dict[str, dict[str, str]],
     on_internal_port: str,
-) -> tuple[sax.Instances, sax.Nets, sax.Ports, bool]:
-    instances, nets, ports, bindings = compiler.lower_bindings(nl, models, cells)
-    for name, inst in instances.items():
+) -> tuple[Netlist, dict[str, str], bool]:
+    compiled, bindings = compiler.lower_bindings(nl, models, cells)
+    for name, inst in compiled.instances.items():
         key = bindings.get(name)
         if key is None:
             msg = (
                 f"Could not resolve model for instance {name!r} "
-                f"(component {inst['component']!r}) in {model_name!r}."
+                f"(component {inst.component!r}) in {model_name!r}."
             )
             raise ValueError(msg)
-        inst["component"] = key
 
-    for port_name, endpoint in extra_ports.get(model_name, {}).items():
-        if port_name in ports:
+    for port_name in extra_ports.get(model_name, {}):
+        if any(port.name == port_name for port in compiled.ports):
             msg = (
                 f"Hierarchical probe port {port_name!r} conflicts with "
                 f"an existing port in {model_name!r}."
             )
             raise ValueError(msg)
-        ports[port_name] = endpoint
+    compiled = compiler.add_external_ports(compiled, extra_ports.get(model_name, {}))
 
     probe_here: dict[str, str] = {}
     if model_name == root:
-        ports, auto_probes = compiler.handle_internal_ports(
-            nets, ports, on_internal_port
+        compiled, auto_probes = compiler.handle_internal_ports(
+            compiled, on_internal_port
         )
         probe_here.update(top_probes)
         probe_here.update(auto_probes)
     probe_here.update(per_cell_probes.get(model_name, {}))
 
     if probe_here:
-        instances, nets, ports = compiler.expand_probes_tables(
-            instances, nets, ports, probe_here
-        )
+        compiled = compiler.expand_probes(compiled, probe_here)
+        for probe_name in probe_here:
+            bindings[f"_probe_{probe_name}"] = "_ideal_probe"
 
-    if model_name == root and not ports:
+    if model_name == root and not compiled.ports:
         msg = (
             "Cannot create circuit: at least 1 port needs to be defined. "
             "Got no ports given."
         )
         raise ValueError(msg)
 
-    return instances, nets, ports, bool(probe_here)
+    resolved = {name: key for name, key in bindings.items() if key is not None}
+    return compiled, resolved, bool(probe_here)
 
 
 def _compile_circuit(
@@ -341,7 +346,7 @@ def _compile_circuit(
         current_models |= new_models
         new_models = {}
         nl = cells[model_name]
-        instances, nets, ports, has_probes = _prepare_cell_tables(
+        compiled, bindings, has_probes = _prepare_cell_netlist(
             nl,
             model_name,
             root,
@@ -357,9 +362,8 @@ def _compile_circuit(
         if has_probes:
             available["_ideal_probe"] = ideal_probe
         current_models[model_name] = circuit = _flat_circuit(
-            instances,
-            nets,
-            ports,
+            compiled,
+            bindings,
             available,
             backend,
             ignore_impossible_connections=ignore_impossible_connections,
@@ -430,86 +434,59 @@ def get_required_circuit_models(
 
     Example:
         ```python
-        netlist = {
-            "instances": {
-                "wg1": {"component": "waveguide"},
-                "dc1": {"component": "directional_coupler"},
-            },
-            "ports": {"in": "wg1,in", "out": "dc1,out"},
-        }
+        from kfnetlist import Netlist, NetlistPort, PortRef
+
+        netlist = Netlist()
+        netlist.create_inst("wg1", "pdk", "waveguide")
+        netlist.create_port("in")
+        netlist.create_net(NetlistPort("in"), PortRef("wg1", "in"))
         required = get_required_circuit_models(netlist)
-        # Result: ["waveguide", "directional_coupler"]
+        # Result: ["waveguide"]
 
         # With some models already available
         models = {"waveguide": my_waveguide_model}
         required = get_required_circuit_models(netlist, models)
-        # Result: ["directional_coupler", "waveguide"] (order unspecified)
+        # Result: ["waveguide"]
         ```
     """
     merged: sax.Models = dict(models or {})
     cells, root = _document(netlist, top_level_name)
-    cells = {
-        name: compiler.prune_unconnected_instances(nl) for name, nl in cells.items()
-    }
+    cells = {name: nl.prune_unconnected() for name, nl in cells.items()}
     dependency_dag = _definition_dag(cells, root, merged)
     _, required, _ = _find_missing_models(merged, dependency_dag)
     return required
 
 
 def _flat_circuit(
-    instances: sax.Instances,
-    nets: sax.Nets,
-    ports: sax.Ports,
+    netlist: Netlist,
+    bindings: dict[str, str],
     models: sax.Models,
     backend: sax.Backend,
     *,
     ignore_impossible_connections: bool = False,
 ) -> sax.Model:
     analyze_insts_fn, analyze_fn, evaluate_fn = circuit_backends[backend]
-    # Backend discovery validates Python identifiers. Model keys may contain
-    # library separators, so give that boundary local IDs.
-    model_ids = {
-        component: f"_model_{i}"
-        for i, component in enumerate(
-            dict.fromkeys(inst["component"] for inst in instances.values())
-        )
-    }
-    analysis_instances = {
-        name: {**inst, "component": model_ids[inst["component"]]}
-        for name, inst in instances.items()
-    }
-    analysis_models = {model_ids[key]: models[key] for key in model_ids}
-    dummy_instances = analyze_insts_fn(analysis_instances, analysis_models)
+    instances = netlist.instances
+    dummy_instances = analyze_insts_fn(bindings, models)
     inst_port_mode = {
         k: _port_modes_dict(get_ports(s)) for k, s in dummy_instances.items()
     }
-    expanded_nets = _get_multimode_nets(
-        nets,
-        inst_port_mode,
-        ignore_impossible_connections=ignore_impossible_connections,
-    )
-    ports = _get_multimode_ports(
-        ports,
+    expanded = compiler.expand_modes(
+        netlist,
         inst_port_mode,
         ignore_impossible_connections=ignore_impossible_connections,
     )
 
-    inst2model = {}
-    for k, inst in instances.items():
-        inst2model[k] = models[inst["component"]]
+    inst2model = {name: models[key] for name, key in bindings.items()}
 
     model_settings = {name: get_settings(model) for name, model in inst2model.items()}
     netlist_settings = {
-        name: {
-            k: v
-            for k, v in (inst.get("settings") or {}).items()
-            if k in model_settings[name]
-        }
+        name: {k: v for k, v in inst.settings.items() if k in model_settings[name]}
         for name, inst in instances.items()
     }
     default_settings = merge_dicts(model_settings, netlist_settings)
     default_settings = {_strip_array_index(k): v for k, v in default_settings.items()}
-    analyzed = analyze_fn(dummy_instances, expanded_nets, ports)
+    analyzed = analyze_fn(dummy_instances, expanded)
 
     def _circuit(**settings: sax.SettingsValue) -> sax.SType:
         full_settings = merge_dicts(default_settings, settings)
@@ -607,7 +584,7 @@ def _validate_models(
 
 
 def _forward_global_settings(
-    instances: sax.Instances, settings: sax.Settings
+    instances: Mapping[str, sax.Model], settings: sax.Settings
 ) -> sax.Settings:
     instance_names = {_strip_array_index(name) for name in instances}
     global_settings = {
@@ -629,84 +606,6 @@ def _port_modes_dict(
         if mode is not None:
             result[port].add(mode)
     return result
-
-
-def _get_multimode_nets(
-    nets: sax.Nets,
-    inst_port_mode: dict[sax.InstanceName, dict[sax.Port, set[sax.Mode]]],
-    *,
-    ignore_impossible_connections: bool = False,
-) -> sax.Nets:
-    mm_nets: sax.Nets = []
-    for net in nets:
-        inst1, port1 = net["p1"].split(",")
-        inst2, port2 = net["p2"].split(",")
-        try:
-            modes1 = inst_port_mode[inst1][port1]
-        except KeyError as e:
-            if ignore_impossible_connections:
-                continue
-            msg = (
-                f"Instance {inst1} does not contain port {port1}. "
-                f"Available ports: {list(inst_port_mode[inst1])}."
-            )
-            raise KeyError(msg) from e
-        try:
-            modes2 = inst_port_mode[inst2][port2]
-        except KeyError as e:
-            if ignore_impossible_connections:
-                continue
-            msg = (
-                f"Instance {inst2} does not contain port {port2}. "
-                f"Available ports: {list(inst_port_mode[inst2])}."
-            )
-            raise KeyError(msg) from e
-        if not modes1 and not modes2:
-            mm_nets.append({"p1": net["p1"], "p2": net["p2"]})
-        elif (not modes1) or (not modes2):
-            msg = (
-                "trying to connect a multimode model to single mode model.\n"
-                "Please update your models dictionary.\n"
-                f"Problematic connection: '{net['p1']}':'{net['p2']}'"
-            )
-            raise ValueError(msg)
-        else:
-            common_modes = modes1.intersection(modes2)
-            for mode in sorted(common_modes):
-                mm_nets.append(
-                    {
-                        "p1": f"{inst1},{port1}@{mode}",
-                        "p2": f"{inst2},{port2}@{mode}",
-                    }
-                )
-    return mm_nets
-
-
-def _get_multimode_ports(
-    ports: sax.Ports,
-    inst_port_mode: dict[sax.InstanceName, dict[sax.Port, set[sax.Mode]]],
-    *,
-    ignore_impossible_connections: bool = False,
-) -> sax.Ports:
-    mm_ports = {}
-    for port, inst_port2 in ports.items():
-        inst2, port2 = inst_port2.split(",")
-        try:
-            modes2 = inst_port_mode[inst2][port2]
-        except KeyError as e:
-            if ignore_impossible_connections:
-                continue
-            msg = (
-                f"Instance {inst2} does not contain port {port2}. "
-                f"Available ports: {list(inst_port_mode[inst2])}"
-            )
-            raise KeyError(msg) from e
-        if not modes2:
-            mm_ports[port] = f"{inst2},{port2}"
-        else:
-            for mode in sorted(modes2):
-                mm_ports[f"{port}@{mode}"] = f"{inst2},{port2}@{mode}"
-    return mm_ports
 
 
 def _enforce_return_type(model: sax.Model, return_type: Any) -> sax.Model:  # noqa: ANN401
@@ -744,5 +643,5 @@ def _validate_dag(dag: nx.DiGraph) -> nx.DiGraph:
     return dag
 
 
-def _strip_array_index(s: sax.InstanceName) -> sax.Name:
-    return s.split("<")[0]
+def _strip_array_index(s: str) -> sax.Name:
+    return s.split("<", maxsplit=1)[0]

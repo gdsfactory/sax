@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from kfnetlist import Netlist, NetlistPort, PortRef
 
 import sax
 
@@ -11,12 +12,15 @@ def _model(gain: sax.FloatArrayLike = 1.0) -> sax.SDict:
 
 
 def _circuit(backend: sax.BackendLike) -> sax.Model:
+    netlist = Netlist()
+    for name in ("a", "b"):
+        netlist.create_inst(name, "pdk", "wg")
+    netlist.create_net(PortRef("a", "out0"), PortRef("b", "in0"))
+    for name, instance, port in (("in", "a", "in0"), ("out", "b", "out0")):
+        netlist.create_port(name)
+        netlist.create_net(NetlistPort(name), PortRef(instance, port))
     circuit, _ = sax.circuit(
-        {
-            "instances": {"a": "wg", "b": "wg"},
-            "connections": {"a,out0": "b,in0"},
-            "ports": {"in": "a,in0", "out": "b,out0"},
-        },
+        netlist,
         {"wg": _model},
         backend=backend,
     )
@@ -47,5 +51,5 @@ def test_joint_broadcast(
 
 def test_incompatible_shapes_rejected() -> None:
     model = _circuit("klu")
-    with pytest.raises(ValueError, match="[Ii]ncompatible shapes"):
+    with pytest.raises(ValueError, match=r"[Ii]ncompatible shapes"):
         model(a={"gain": jnp.ones((2,))}, b={"gain": jnp.ones((3,))})

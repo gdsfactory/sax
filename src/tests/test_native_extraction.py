@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from kfnetlist import PlacedInstance, PlacedNetlist
+from kfnetlist import HierarchicalNetlist, Netlist, RefNetlistInstance
 from kfnetlist.extract import extract
 
 import sax
@@ -27,7 +27,7 @@ def _wire(length: float = 10.0) -> sax.SDict:
     return {("o1", "o2"): jnp.asarray(length), ("o2", "o1"): jnp.asarray(2 * length)}
 
 
-def test_placed_extraction_preserves_factory_and_variant_identity(
+def test_extraction_preserves_factory_and_variant_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gf = pytest.importorskip("gdsfactory")
@@ -59,18 +59,20 @@ def test_placed_extraction_preserves_factory_and_variant_identity(
             wrap_kdb_instance=lambda instance: kf.Instance(
                 kcl=top.kcl, instance=instance
             ),
-            include_placement=True,
+            include_placement=False,
         )
-        assert all(isinstance(cell, PlacedNetlist) for cell in cells.values())
+        assert all(isinstance(cell, Netlist) for cell in cells.values())
         a, b = cells[top.name].instances["a"], cells[top.name].instances["b"]
-        assert isinstance(a, PlacedInstance)
-        assert isinstance(b, PlacedInstance)
+        assert isinstance(a, RefNetlistInstance)
+        assert isinstance(b, RefNetlistInstance)
         assert a.component == b.component
-        assert a.cell != b.cell
-        wire_factory = cells[a.cell].instances["wire"].component
+        assert a.netlist_id != b.netlist_id
+        wire_factory = cells[a.netlist_id].instances["wire"].component
         before = {name: cell.to_dict() for name, cell in cells.items()}
         for models in ({a.component: _analytic}, {wire_factory: _wire}):
-            model, _ = sax.circuit(cells, models, top_level_name=top.name)
+            model, _ = sax.circuit(
+                HierarchicalNetlist(cells), models, top_level_name=top.name
+            )
             result = model()
             np.testing.assert_allclose(result["a_in", "a_out"], 10)
             np.testing.assert_allclose(result["b_in", "b_out"], 20)

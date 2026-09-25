@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from kfnetlist import (
+    HierarchicalNetlist,
+    Net,
+    Netlist,
+    NetlistInstance,
+    NetlistPort,
+    PortRef,
+)
+
 from .anymode import (
     Backend,
     BackendLike,
@@ -75,28 +84,11 @@ from .multimode import (
     SDictModelMM,
     STypeMM,
 )
-from .netlist import (
-    AnyNetlist,
-    Component,
-    Connections,
-    Instance,
-    Instances,
-    Net,
-    Netlist,
-    Nets,
-    Placement,
-    Placements,
-    Ports,
-    RecursiveNetlist,
-    default_placement,
-)
 from .settings import (
     Settings,
     SettingsValue,
 )
 from .singlemode import (
-    InstanceName,
-    InstancePort,
     ModelFactorySM,
     ModelSM,
     ModelsSM,
@@ -116,7 +108,6 @@ from .singlemode import (
 )
 
 __all__ = [
-    "AnyNetlist",
     "ArrayLike",
     "Backend",
     "BackendLike",
@@ -131,24 +122,17 @@ __all__ = [
     "ComplexArray1DLike",
     "ComplexArrayLike",
     "ComplexLike",
-    "Component",
-    "Connections",
     "ExperimentalWarning",
     "Float",
     "FloatArray",
     "FloatArray1D",
-    "FloatArray1D",
-    "FloatArray1DLike",
     "FloatArray1DLike",
     "FloatArray2D",
     "FloatArray2DLike",
     "FloatArrayLike",
     "FloatLike",
+    "HierarchicalNetlist",
     "IOLike",
-    "Instance",
-    "InstanceName",
-    "InstancePort",
-    "Instances",
     "Int",
     "IntArray",
     "IntArray1D",
@@ -168,9 +152,8 @@ __all__ = [
     "Name",
     "Net",
     "Netlist",
-    "Nets",
-    "Placement",
-    "Placements",
+    "NetlistInstance",
+    "NetlistPort",
     "Port",
     "PortCombination",
     "PortCombinationMM",
@@ -179,8 +162,7 @@ __all__ = [
     "PortMapMM",
     "PortMapSM",
     "PortMode",
-    "Ports",
-    "RecursiveNetlist",
+    "PortRef",
     "SCoo",
     "SCooMM",
     "SCooModel",
@@ -213,7 +195,6 @@ __all__ = [
     "STypeSM",
     "Settings",
     "SettingsValue",
-    "default_placement",
     "into",
     "try_into",
 ]

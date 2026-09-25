@@ -6,6 +6,7 @@ import pytest
 from kfnetlist import (
     HierarchicalNetlist,
     Netlist,
+    NetlistInstance,
     NetlistPort,
     PlacedNetlist,
     PortRef,
@@ -47,7 +48,7 @@ def test_plain_reference_traversal() -> None:
 
 def test_hierarchical_netlist_object_is_a_circuit_input() -> None:
     document = HierarchicalNetlist(_document())
-    assert sax.RecursiveNetlist is HierarchicalNetlist
+    assert sax.HierarchicalNetlist is HierarchicalNetlist
     model, _ = sax.circuit(document, {"waveguide": _model})
     np.testing.assert_allclose(model()["a_in", "a_out"], 3)
     document["top_level"].create_inst(
@@ -111,7 +112,8 @@ def test_reference_cycle_rejected_before_model_substitution() -> None:
 def test_public_netlist_types_use_kfnetlist() -> None:
     assert sax.Netlist is Netlist
     assert sax.saxtypes.Netlist is Netlist
-    assert sax.RecursiveNetlist is HierarchicalNetlist
+    assert sax.NetlistInstance is NetlistInstance
+    assert sax.HierarchicalNetlist is HierarchicalNetlist
 
 
 @pytest.mark.parametrize(

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import jax
 from jaxtyping import Array
+from kfnetlist import Netlist
 
 import sax
 
-from ._connections import nets_to_connections_strict
+from ._connections import pairwise_connections_strict, solver_wiring
 
 __all__ = [
     "analyze_circuit_fg",
@@ -19,9 +21,9 @@ __all__ = [
 
 
 def analyze_instances_fg(
-    instances: sax.Instances,
-    models: sax.Models,
-) -> dict[sax.InstanceName, sax.SDict]:
+    bindings: Mapping[str, str],
+    models: Mapping[str, sax.Model],
+) -> dict[str, sax.SDict]:
     """Analyze circuit instances for the Filipsson-Gunnar backend.
 
     Prepares instance S-matrices for the Filipsson-Gunnar backend by converting
@@ -29,8 +31,7 @@ def analyze_instances_fg(
     Filipsson-Gunnar algorithm for S-matrix interconnection of multiports.
 
     Args:
-        instances: Dictionary mapping instance names to instance definitions
-            containing component names and settings.
+        bindings: Instance names mapped to model keys.
         models: Dictionary mapping component names to their model functions.
 
     Returns:
@@ -45,30 +46,22 @@ def analyze_instances_fg(
 
     Example:
         ```python
-        instances = {
-            "wg1": {"component": "waveguide", "settings": {"length": 10.0}},
-            "dc1": {"component": "coupler", "settings": {"coupling": 0.1}},
-        }
+        bindings = {"wg1": "waveguide", "dc1": "coupler"}
         models = {"waveguide": waveguide_model, "coupler": coupler_model}
-        analyzed = analyze_instances_fg(instances, models)
+        analyzed = analyze_instances_fg(bindings, models)
         ```
     """
-    instances = sax.into[sax.Instances](instances)
-    models = sax.into[sax.Models](models)
-    model_names = set()
-    for i in instances.values():
-        model_names.add(i["component"])
+    model_names = set(bindings.values())
     dummy_models = {k: sax.sdict(models[k]()) for k in model_names}
     dummy_instances = {}
-    for k, i in instances.items():
-        dummy_instances[k] = dummy_models[i["component"]]
+    for name, key in bindings.items():
+        dummy_instances[name] = dummy_models[key]
     return dummy_instances
 
 
 def analyze_circuit_fg(
     analyzed_instances: dict[str, sax.SDict],  # noqa: ARG001
-    nets: sax.Nets,
-    ports: sax.Ports,
+    netlist: Netlist,
 ) -> Any:  # noqa: ANN401
     """Analyze circuit topology for the Filipsson-Gunnar backend.
 
@@ -79,21 +72,18 @@ def analyze_circuit_fg(
     Args:
         analyzed_instances: Instance S-matrices from analyze_instances_fg.
             Not used in this analysis step but required for interface consistency.
-        nets: List of net dictionaries with "p1" and "p2" keys defining
-            internal circuit connections.
-        ports: Dictionary mapping external port names to instance ports.
+        netlist: Compiled kfnetlist topology with instances, nets, and ports.
 
     Returns:
         Tuple containing connections and ports information for circuit evaluation.
 
     Example:
         ```python
-        nets = [{"p1": "wg1,out", "p2": "dc1,in1"}, {"p1": "dc1,out1", "p2": "wg2,in"}]
-        ports = {"in": "wg1,in", "out": "wg2,out"}
-        analyzed = analyze_circuit_fg(analyzed_instances, nets, ports)
+        analyzed = analyze_circuit_fg(analyzed_instances, netlist)
         ```
     """
-    connections = nets_to_connections_strict(nets)
+    pairs, ports = solver_wiring(netlist)
+    connections = pairwise_connections_strict(pairs)
     return connections, ports  # skip analysis for now
 
 

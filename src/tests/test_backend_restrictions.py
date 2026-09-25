@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from kfnetlist import Netlist, NetlistPort, PortRef
 
 import sax
 
@@ -9,12 +10,20 @@ def _component(value: sax.FloatArrayLike = 0.8) -> sax.SDict:
     return sax.reciprocal({("in0", "out0"): jnp.asarray(value)})
 
 
-def _multilink_netlist() -> dict:
-    return {
-        "instances": {"a": "component", "b": "component", "c": "component"},
-        "nets": [{"p1": "a,out0", "p2": "b,in0"}, {"p1": "a,out0", "p2": "c,in0"}],
-        "ports": {"in0": "a,in0", "out0": "b,out0", "out1": "c,out0"},
-    }
+def _multilink_netlist() -> Netlist:
+    netlist = Netlist()
+    for name in ("a", "b", "c"):
+        netlist.create_inst(name, "pdk", "component")
+    netlist.create_net(PortRef("a", "out0"), PortRef("b", "in0"))
+    netlist.create_net(PortRef("a", "out0"), PortRef("c", "in0"))
+    for name, instance, port in (
+        ("in0", "a", "in0"),
+        ("out0", "b", "out0"),
+        ("out1", "c", "out0"),
+    ):
+        netlist.create_port(name)
+        netlist.create_net(NetlistPort(name), PortRef(instance, port))
+    return netlist
 
 
 @pytest.mark.parametrize("backend", ["fg", "additive"])
@@ -33,12 +42,15 @@ def test_klu_multilinks_copy_not_power_conserving_split() -> None:
 
 
 def test_additive_quantities_are_path_lengths_not_amplitude_products() -> None:
+    netlist = Netlist()
+    for name in ("a", "b"):
+        netlist.create_inst(name, "pdk", "component")
+    netlist.create_net(PortRef("a", "out0"), PortRef("b", "in0"))
+    for name, instance, port in (("in0", "a", "in0"), ("out0", "b", "out0")):
+        netlist.create_port(name)
+        netlist.create_net(NetlistPort(name), PortRef(instance, port))
     model, _ = sax.circuit(
-        {
-            "instances": {"a": "component", "b": "component"},
-            "connections": {"a,out0": "b,in0"},
-            "ports": {"in0": "a,in0", "out0": "b,out0"},
-        },
+        netlist,
         {"component": _component},
         backend="additive",
     )

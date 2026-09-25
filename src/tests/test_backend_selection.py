@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from kfnetlist import Netlist, NetlistPort, PortRef
 
 import sax
 
@@ -19,11 +20,18 @@ def _waveguide(gain: sax.FloatArrayLike = 0.8) -> sax.SDict:
 
 
 def test_unequal_depth_reconvergence_matches_physical_solvers() -> None:
-    net = {
-        "instances": {"s": "split", "w": "waveguide", "m": "merge"},
-        "connections": {"s,out0": "m,in0", "s,out1": "w,in0", "w,out0": "m,in1"},
-        "ports": {"in0": "s,in0", "out0": "m,out0"},
-    }
+    net = Netlist()
+    for name, component in (("s", "split"), ("w", "waveguide"), ("m", "merge")):
+        net.create_inst(name, "pdk", component)
+    for left, right in (
+        (("s", "out0"), ("m", "in0")),
+        (("s", "out1"), ("w", "in0")),
+        (("w", "out0"), ("m", "in1")),
+    ):
+        net.create_net(PortRef(*left), PortRef(*right))
+    for name, instance, port in (("in0", "s", "in0"), ("out0", "m", "out0")):
+        net.create_port(name)
+        net.create_net(NetlistPort(name), PortRef(instance, port))
     models = {"split": _split, "merge": _merge, "waveguide": _waveguide}
     gain = jnp.array([0.5, 0.8])
     expected = 0.08 + 0.15 * gain
@@ -44,4 +52,4 @@ def test_unequal_depth_reconvergence_matches_physical_solvers() -> None:
 @pytest.mark.parametrize("backend", ["forward", "FORWARD"])
 def test_removed_forward_backend_rejected(backend: str) -> None:
     with pytest.raises(ValueError, match=r"Invalid backend.*forward"):
-        sax.circuit({}, backend=backend)  # type: ignore[call-overload]
+        sax.circuit(Netlist(), backend=backend)

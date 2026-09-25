@@ -75,27 +75,25 @@ waveguide(length=100.0)
 These component models can then be combined into a circuit:
 
 ```python
-mzi, _ = sax.circuit(
-    netlist={
-        "instances": {
-            "lft": coupler,
-            "top": waveguide,
-            "rgt": coupler,
-        },
-        "connections": {
-            "lft,out0": "rgt,in0",
-            "lft,out1": "top,in0",
-            "top,out0": "rgt,in1",
-        },
-        "ports": {
-            "in0": "lft,in0",
-            "in1": "lft,in1",
-            "out0": "rgt,out0",
-            "out1": "rgt,out1",
-        },
-    }
-)
+from kfnetlist import Netlist, NetlistPort, PortRef
 
+netlist = Netlist()
+for name, component in (("lft", "coupler"), ("top", "waveguide"), ("rgt", "coupler")):
+    netlist.create_inst(name, "pdk", component)
+for left, right in (
+    (("lft", "out0"), ("rgt", "in0")),
+    (("lft", "out1"), ("top", "in0")),
+    (("top", "out0"), ("rgt", "in1")),
+):
+    netlist.create_net(PortRef(*left), PortRef(*right))
+for name, instance, port in (
+    ("in0", "lft", "in0"), ("in1", "lft", "in1"),
+    ("out0", "rgt", "out0"), ("out1", "rgt", "out1"),
+):
+    netlist.create_port(name)
+    netlist.create_net(NetlistPort(name), PortRef(instance, port))
+
+mzi, _ = sax.circuit(netlist, {"coupler": coupler, "waveguide": waveguide})
 type(mzi)
 ```
 

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 import klujax
 import numpy as np
+from kfnetlist import Netlist
 from natsort import natsorted
 
 import sax
+
+from ._connections import solver_wiring
 
 __all__ = [
     "analyze_circuit_klu",
@@ -20,8 +24,8 @@ __all__ = [
 
 
 def analyze_instances_klu(
-    instances: dict[sax.InstanceName, sax.Instance],
-    models: dict[str, sax.Model],
+    bindings: Mapping[str, str],
+    models: Mapping[str, sax.Model],
 ) -> dict[str, sax.SCoo]:
     """Analyze circuit instances for the KLU backend.
 
@@ -30,8 +34,7 @@ def analyze_instances_klu(
     techniques with the KLU solver for high-performance circuit evaluation.
 
     Args:
-        instances: Dictionary mapping instance names to instance definitions
-            containing component names and settings.
+        bindings: Instance names mapped to model keys.
         models: Dictionary mapping component names to their model functions.
 
     Returns:
@@ -44,18 +47,12 @@ def analyze_instances_klu(
 
     Example:
         ```python
-        instances = {
-            "wg1": {"component": "waveguide", "settings": {"length": 10.0}},
-            "dc1": {"component": "coupler", "settings": {"coupling": 0.1}},
-        }
+        bindings = {"wg1": "waveguide", "dc1": "coupler"}
         models = {"waveguide": waveguide_model, "coupler": coupler_model}
-        analyzed = analyze_instances_klu(instances, models)
+        analyzed = analyze_instances_klu(bindings, models)
         ```
     """
-    instances = sax.into[sax.Instances](instances)
-    model_names = set()
-    for i in instances.values():
-        model_names.add(i["component"])
+    model_names = set(bindings.values())
     # Build the per-model SCoo with the topology indices ``Si``/``Sj``
     # cast to numpy. Indices are pure netlist topology (which (i, j)
     # entries of the model's S-matrix are non-zero) and never depend on
@@ -67,8 +64,8 @@ def analyze_instances_klu(
     # jnp indices for backward compatibility with other backends.
     dummy_models = {k: _scoo_with_numpy_indices(models[k]()) for k in model_names}
     dummy_instances = {}
-    for k, i in instances.items():
-        dummy_instances[k] = dummy_models[i["component"]]
+    for name, key in bindings.items():
+        dummy_instances[name] = dummy_models[key]
     return dummy_instances
 
 
@@ -97,9 +94,8 @@ def _scoo_with_numpy_indices(s: sax.SType) -> sax.SCoo:
 
 
 def analyze_circuit_klu(
-    analyzed_instances: dict[sax.InstanceName, sax.SCoo],
-    nets: sax.Nets,
-    ports: sax.Ports,
+    analyzed_instances: dict[str, sax.SCoo],
+    netlist: Netlist,
 ) -> Any:  # noqa: ANN401
     """Analyze circuit topology for the KLU sparse matrix backend.
 
@@ -110,9 +106,7 @@ def analyze_circuit_klu(
     Args:
         analyzed_instances: Instance S-matrices from analyze_instances_klu in
             SCoo format.
-        nets: List of net dictionaries with "p1" and "p2" keys defining
-            internal circuit connections. Supports multiply connected ports.
-        ports: Dictionary mapping external port names to instance ports.
+        netlist: Compiled kfnetlist topology with instances, nets, and ports.
 
     Returns:
         Complex analysis data structure containing sparse matrix indices,
@@ -125,11 +119,10 @@ def analyze_circuit_klu(
 
     Example:
         ```python
-        nets = [{"p1": "wg1,out", "p2": "dc1,in1"}, {"p1": "dc1,out1", "p2": "wg2,in"}]
-        ports = {"in": "wg1,in", "out": "wg2,out"}
-        analyzed = analyze_circuit_klu(analyzed_instances, nets, ports)
+        analyzed = analyze_circuit_klu(analyzed_instances, netlist)
         ```
     """
+    pairs, ports = solver_wiring(netlist)
     inverse_ports = {v: k for k, v in ports.items()}
     port_map = {k: i for i, k in enumerate(ports)}
 
@@ -152,13 +145,13 @@ def analyze_circuit_klu(
     Si = np.concatenate(Si, -1)
     Sj = np.concatenate(Sj, -1)
 
-    pairs: set[tuple[int, int]] = set()
-    for net in nets:
-        p1_idx = int(instance_ports[net["p1"]])
-        p2_idx = int(instance_ports[net["p2"]])
-        pairs.add((p1_idx, p2_idx))
-        pairs.add((p2_idx, p1_idx))
-    sorted_pairs = sorted(pairs)
+    index_pairs: set[tuple[int, int]] = set()
+    for p1, p2 in pairs:
+        p1_idx = int(instance_ports[p1])
+        p2_idx = int(instance_ports[p2])
+        index_pairs.add((p1_idx, p2_idx))
+        index_pairs.add((p2_idx, p1_idx))
+    sorted_pairs = sorted(index_pairs)
     Ci = np.array([p[0] for p in sorted_pairs], dtype=np.int32)
     Cj = np.array([p[1] for p in sorted_pairs], dtype=np.int32)
 
@@ -200,7 +193,7 @@ def analyze_circuit_klu(
 
 def evaluate_circuit_klu(
     analyzed: Any,  # noqa: ANN401
-    instances: dict[sax.InstanceName, sax.SType],
+    instances: dict[str, sax.SType],
 ) -> sax.SDense:
     """Evaluate circuit S-matrix using the KLU sparse matrix solver.
 
