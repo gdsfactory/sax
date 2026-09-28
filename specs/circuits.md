@@ -12,20 +12,24 @@ SAX accepts no legacy dictionary or JSON netlist inputs in this breaking pass.
 
 ```python
 import sax
-from kfnetlist import Netlist, NetlistPort, PortRef
+from kfnetlist import Netlist
 
-net = Netlist()
-net.create_inst("a", "pdk", "straight", {"length": 20.0})
-net.create_port("in")
-net.create_port("out")
-net.create_net(NetlistPort(name="in"), PortRef("a", "in"))
-net.create_net(PortRef("a", "out"), NetlistPort(name="out"))
+net = Netlist.from_dict({
+    "instances": {"a": {"component": "straight", "settings": {"length": 20.0}}},
+    "ports": [{"name": "in"}, {"name": "out"}],
+    "nets": [
+        [{"name": "in"}, {"instance": "a", "port": "in"}],
+        [{"instance": "a", "port": "out"}, {"name": "out"}],
+    ],
+})
 model, info = sax.circuit(net, {"straight": straight_model})
 ```
 
 An instance records a library, component, settings, and optionally an explicit
 child `netlist_id`. SAX does not infer a child from the component name. kfnetlist
-owns netlist validation, serialization, and generic transforms. SAX keeps
+accepts an omitted `kcl` library name as an empty string, so hand-written
+netlists need only state it when library-qualified model lookup matters.
+kfnetlist owns netlist validation, serialization, and generic transforms. SAX keeps
 instances, nets, and ports as kfnetlist objects through compilation and mode
 expansion. Backends derive numerical endpoint indices from the compiled netlist.
 The constructed root must expose at least one port.

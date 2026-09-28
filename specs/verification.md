@@ -5,7 +5,10 @@
 SAX now uses kfnetlist `Netlist` and `HierarchicalNetlist` through circuit
 compilation and backend analysis. The kfnetlist `sax` branch provides native
 pruning, array expansion, and explicit references during plain layout
-extraction; `uv.lock` pins that branch at `3dc1d37f`.
+extraction; `uv.lock` currently pins that branch at `8bf2309`.
+
+The table below records the earlier run against `3dc1d37f`; it is historical
+evidence rather than a claim for the current lock revision.
 
 | Check | Result |
 | --- | --- |
@@ -20,6 +23,16 @@ extraction; `uv.lock` pins that branch at `3dc1d37f`.
 The optional environment used an editable checkout of kfnetlist at the same
 source revision as the locked Git branch. Notebook execution used a temporary
 kernel prefix rather than changing the user's global kernel.
+
+## Optional `kcl` and declarative examples
+
+With kfnetlist `8bf2309` installed from the local `sax` checkout, the SAX
+non-notebook suite passed **361 tests**. The focused native identity, extraction,
+document, and explicit hierarchy tests passed **25 tests**. Twelve changed
+example and internal notebooks executed successfully; the Python example in
+`docs/native-netlists.md` also ran. `uv lock --check` and the staged notebook
+JSON/source checks passed. The notebook run used an existing local environment;
+the full pytest notebook harness and other dependency combinations were not run.
 
 ## Baseline runs
 

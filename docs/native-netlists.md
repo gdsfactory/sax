@@ -14,19 +14,23 @@ a published kfnetlist version.
 import kfnetlist as kfn
 import sax
 
-child = kfn.Netlist()
-child.create_inst("wg", "pdk", "waveguide", {"gain": 3.0})
-child.create_port("in")
-child.create_port("out")
-child.create_net(kfn.NetlistPort(name="in"), kfn.PortRef("wg", "in"))
-child.create_net(kfn.PortRef("wg", "out"), kfn.NetlistPort(name="out"))
+child = kfn.Netlist.from_dict({
+    "instances": {"wg": {"component": "waveguide", "settings": {"gain": 3.0}}},
+    "ports": [{"name": "in"}, {"name": "out"}],
+    "nets": [
+        [{"name": "in"}, {"instance": "wg", "port": "in"}],
+        [{"instance": "wg", "port": "out"}, {"name": "out"}],
+    ],
+})
 
-top = kfn.Netlist()
-top.create_inst("arm", "pdk", "make_arm", netlist_id="arm_3")
-top.create_port("in")
-top.create_port("out")
-top.create_net(kfn.NetlistPort(name="in"), kfn.PortRef("arm", "in"))
-top.create_net(kfn.PortRef("arm", "out"), kfn.NetlistPort(name="out"))
+top = kfn.Netlist.from_dict({
+    "instances": {"arm": {"component": "make_arm", "netlist_id": "arm_3"}},
+    "ports": [{"name": "in"}, {"name": "out"}],
+    "nets": [
+        [{"name": "in"}, {"instance": "arm", "port": "in"}],
+        [{"instance": "arm", "port": "out"}, {"name": "out"}],
+    ],
+})
 
 document = kfn.HierarchicalNetlist({"top_level": top, "arm_3": child})
 model, info = sax.circuit(
@@ -46,7 +50,8 @@ branch, `extract(..., include_placement=False)` emits `netlist_id` references
 to the child netlists in its returned document. Wrap that mapping in
 `HierarchicalNetlist` before passing it to SAX. Bind models using the
 extracted `component` factory IDs; gdsfactory may qualify them beyond a short
-function name such as `straight`.
+function name such as `straight`. Hand-written instances can omit `kcl`; set it
+when the library identity is needed to distinguish components.
 
 ## Model lookup
 

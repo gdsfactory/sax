@@ -1820,7 +1820,7 @@ ipy = [
 [[package]]
 name = "kfnetlist"
 version = "0.3.0"
-source = { git = "https://github.com/gdsfactory/kfnetlist.git?branch=sax#3dc1d37fb58ebe37905022a57ec34d8727c91f6d" }
+source = { git = "https://github.com/gdsfactory/kfnetlist.git?branch=sax#8bf2309476a2954adbf9b137b1d0c38ede1f9a1e" }
 
 [[package]]
 name = "kiwisolver"
