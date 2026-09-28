@@ -61,3 +61,6 @@ This authorizes those stage commits; exclude unrelated work.
 Preserve unrelated changes. Do not create/switch branches, commit, stash, change
 runtime behavior during spec-only work, or update dependencies without appropriate
 user authorization. Ask about material ambiguity, not facts discoverable in code.
+
+When working on a feature branch, commit and push completed, reviewable increments
+often. Keep unrelated working-tree changes out of those commits.
