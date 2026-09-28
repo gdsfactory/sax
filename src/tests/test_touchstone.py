@@ -85,3 +85,59 @@ def test_raw_v2() -> None:
 def test_raw_invalid_record() -> None:
     with pytest.raises(ValueError, match="infer port count"):
         sax.parse_touchstone("# Hz S RI R 50\n1e9 1 0 2 0\n")
+
+
+def test_sdict_touchstone_round_trip(tmp_path: Path) -> None:
+    frequency = np.array([1e9, 2e9])
+    matrix = np.array([MATRIX, 0.5 * MATRIX])
+    sdict = {
+        (port_in, port_out): matrix[:, j, i]
+        for i, port_in in enumerate(("input", "output"))
+        for j, port_out in enumerate(("input", "output"))
+    }
+    path = sax.write_sdict_touchstone(
+        sdict, frequency, tmp_path / "model.s2p", ports=("output", "input"), z0=75.0
+    )
+    assert path.read_text().startswith("! ports: output, input\n")
+    network = skrf.Network(str(path))
+    np.testing.assert_allclose(network.s, matrix[:, ::-1, ::-1])
+    np.testing.assert_allclose(network.z0, 75.0)
+
+    recovered_frequency, recovered = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(recovered_frequency, frequency)
+    assert set(recovered) == set(sdict)
+    for ports, values in sdict.items():
+        np.testing.assert_allclose(recovered[ports], values)
+    with pytest.raises(ValueError, match="not a permutation"):
+        sax.write_sdict_touchstone(
+            sdict, frequency, tmp_path / "bad.s2p", ports=("input", "unknown")
+        )
+
+
+def test_sdict_touchstone_rejects_frequency_mismatch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="frequency axis"):
+        sax.write_sdict_touchstone(
+            {("o1", "o1"): np.array([1 + 0j, 0.5 + 0j])},
+            np.array([1e9]),
+            tmp_path / "mismatch.s1p",
+        )
+
+
+def test_sdict_touchstone_rejects_duplicate_read_ports(tmp_path: Path) -> None:
+    path = tmp_path / "external.s2p"
+    path.write_text(TEXT)
+    frequency, sdict = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(frequency, [1e9])
+    np.testing.assert_allclose(sdict["o1", "o2"], [MATRIX[1, 0]])
+    with pytest.raises(ValueError, match="unique port labels"):
+        sax.read_sdict_touchstone(path, ports=("o1", "o1"))
+
+
+def test_sdict_touchstone_rejects_nonuniform_reference(tmp_path: Path) -> None:
+    path = tmp_path / "external.s2p"
+    path.write_text(
+        "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 2\n"
+        "[Reference] 50 50.0001\n[Network Data]\n1e9 1 0 0 0 0 0 1 0\n[End]\n"
+    )
+    with pytest.raises(ValueError, match="reference impedances"):
+        sax.read_sdict_touchstone(path)
