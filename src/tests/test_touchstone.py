@@ -15,7 +15,9 @@ MATRIX = np.array([[0.1 + 0.2j, 0.25 - 0.3j], [0.5 + 0.6j, 0.4 + 0.1j]])
 @pytest.mark.parametrize("wavelength", [True, False])
 @pytest.mark.parametrize("raw", [True, False])
 def test_reader_external_asymmetric_fixture(
-    tmp_path: Path, wavelength: bool, raw: bool
+    tmp_path: Path,
+    wavelength: bool,  # noqa: FBT001
+    raw: bool,  # noqa: FBT001
 ) -> None:
     path = tmp_path / "external.s2p"
     path.write_text(TEXT)
@@ -28,10 +30,9 @@ def test_reader_external_asymmetric_fixture(
         ("b", "a"): MATRIX[0, 1],
         ("b", "b"): MATRIX[1, 1],
     }
-    for row in frame.itertuples():
-        np.testing.assert_allclose(
-            row.amp * np.exp(1j * row.phi), expected[row.port_in, row.port_out]
-        )
+    for row in frame.to_dict("records"):
+        actual = row["amp"] * np.exp(1j * row["phi"])
+        np.testing.assert_allclose(actual, expected[row["port_in"], row["port_out"]])
     coordinate = "wl" if wavelength else "f"
     np.testing.assert_allclose(
         frame[coordinate], sax.C_UM_S / 1e9 if wavelength else 1e9
@@ -77,7 +78,10 @@ def test_raw_multiline_three_port() -> None:
 
 
 def test_raw_v2() -> None:
-    text = "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    text = (
+        "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n"
+        "[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    )
     frame = sax.parse_touchstone(text)
     np.testing.assert_allclose(frame["amp"], abs(0.5 + 0.25j))
 

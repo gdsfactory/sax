@@ -45,7 +45,7 @@ def parse_touchstone(
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
         with StringIO(content_or_filename) as stream:
             stream.name = _touchstone_name(content_or_filename)
-            ntwk = rf.Network(stream)
+            ntwk = rf.Network(stream)  # type: ignore[reportArgumentType]
     else:
         path = Path(content_or_filename).resolve()
         if not path.exists():
@@ -62,7 +62,7 @@ def parse_touchstone(
     order = np.argsort(ntwk.f)
     if convert_to_wavelength:
         order = order[::-1]
-        coords = {"wl": sax.C_UM_S / ntwk.f[order]}
+        coords: dict[str, object] = {"wl": sax.C_UM_S / ntwk.f[order]}
     else:
         coords = {"f": ntwk.f[order]}
     # scikit-rf uses (output, input), whereas the tidy table labels directions.
@@ -77,7 +77,10 @@ def parse_touchstone(
     df["amp"] = np.abs(df["s"].to_numpy())
     df["phi"] = np.angle(df.pop("s").to_numpy())
     axis = "wl" if convert_to_wavelength else "f"
-    return df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]]
+    return cast(
+        pd.DataFrame,
+        df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]],
+    )
 
 
 def _touchstone_name(content: str) -> str:
@@ -198,7 +201,7 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
 
 
 def _get_port(pm: str) -> str:
-    return pm.split("@")[0]
+    return pm.split("@", maxsplit=1)[0]
 
 
 def _get_mode(pm: str) -> str:
