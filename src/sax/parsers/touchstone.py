@@ -238,7 +238,7 @@ def write_sdict_touchstone(
     network = skrf.Network()
     network.frequency = frequency
     network.s = matrix
-    network.z0 = z0
+    network.z0 = np.full((frequency.size, len(labels)), z0)
     network.name = path.stem
     content = network.write_touchstone(return_string=True, form="ri")
     if not content:
@@ -287,7 +287,7 @@ def read_sdict_touchstone(
         for i, port_in in enumerate(labels)
         for j, port_out in enumerate(labels)
     }
-    return network.f, sdict
+    return network.f, cast(sax.SDict, sdict)
 
 
 def _get_port(pm: str) -> str:

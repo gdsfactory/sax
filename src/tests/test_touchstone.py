@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -90,11 +91,14 @@ def test_raw_invalid_record() -> None:
 def test_sdict_touchstone_round_trip(tmp_path: Path) -> None:
     frequency = np.array([1e9, 2e9])
     matrix = np.array([MATRIX, 0.5 * MATRIX])
-    sdict = {
-        (port_in, port_out): matrix[:, j, i]
-        for i, port_in in enumerate(("input", "output"))
-        for j, port_out in enumerate(("input", "output"))
-    }
+    sdict = cast(
+        sax.SDict,
+        {
+            (port_in, port_out): matrix[:, j, i]
+            for i, port_in in enumerate(("input", "output"))
+            for j, port_out in enumerate(("input", "output"))
+        },
+    )
     path = sax.write_sdict_touchstone(
         sdict, frequency, tmp_path / "model.s2p", ports=("output", "input"), z0=75.0
     )
@@ -117,7 +121,7 @@ def test_sdict_touchstone_round_trip(tmp_path: Path) -> None:
 def test_sdict_touchstone_rejects_frequency_mismatch(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="frequency axis"):
         sax.write_sdict_touchstone(
-            {("o1", "o1"): np.array([1 + 0j, 0.5 + 0j])},
+            cast(sax.SDict, {("o1", "o1"): np.array([1 + 0j, 0.5 + 0j])}),
             np.array([1e9]),
             tmp_path / "mismatch.s1p",
         )
