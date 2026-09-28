@@ -9,7 +9,7 @@ from sax.fit import eval_neural_fit, neural_fit
 @pytest.mark.parametrize("constant_feature", [True, False])
 @pytest.mark.parametrize("constant_target", [True, False])
 def test_constant_columns_finite_and_export_consistent(
-    constant_feature: bool, constant_target: bool
+    *, constant_feature: bool, constant_target: bool
 ) -> None:
     frame = pd.DataFrame(
         {
