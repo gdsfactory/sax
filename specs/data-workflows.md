@@ -47,7 +47,8 @@ conversion defaults; do not infer a single global policy.
   resolved path. Missing extensions become `.sNp`; mismatched extensions warn.
 - `write_sdict_touchstone(sdict, f, path)` writes a frequency-swept SAX dictionary
   directly, with `f` in Hz and a matching frequency axis. It records the port
-  order in a comment; an explicit order must permute the model ports.
+  order in a comment; an explicit order must permute the model ports. An extensionless
+  path gains `.sNp` for the port count, and a mismatched suffix is rejected.
 - `read_sdict_touchstone(path)` returns frequencies in Hz and a dictionary keyed
   by `(input_port, output_port)`. It restores the port-order comment, accepts
   explicit labels, and rejects nonuniform reference impedances that the returned

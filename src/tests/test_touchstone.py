@@ -16,7 +16,7 @@ MATRIX = np.array([[0.1 + 0.2j, 0.25 - 0.3j], [0.5 + 0.6j, 0.4 + 0.1j]])
 @pytest.mark.parametrize("wavelength", [True, False])
 @pytest.mark.parametrize("raw", [True, False])
 def test_reader_external_asymmetric_fixture(
-    tmp_path: Path, wavelength: bool, raw: bool
+    tmp_path: Path, *, wavelength: bool, raw: bool
 ) -> None:
     path = tmp_path / "external.s2p"
     path.write_text(TEXT)
@@ -29,9 +29,10 @@ def test_reader_external_asymmetric_fixture(
         ("b", "a"): MATRIX[0, 1],
         ("b", "b"): MATRIX[1, 1],
     }
-    for row in frame.itertuples():
+    for row in frame.to_dict("records"):
         np.testing.assert_allclose(
-            row.amp * np.exp(1j * row.phi), expected[row.port_in, row.port_out]
+            row["amp"] * np.exp(1j * row["phi"]),
+            expected[row["port_in"], row["port_out"]],
         )
     coordinate = "wl" if wavelength else "f"
     np.testing.assert_allclose(
@@ -78,7 +79,10 @@ def test_raw_multiline_three_port() -> None:
 
 
 def test_raw_v2() -> None:
-    text = "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    text = (
+        "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n"
+        "[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    )
     frame = sax.parse_touchstone(text)
     np.testing.assert_allclose(frame["amp"], abs(0.5 + 0.25j))
 
@@ -125,6 +129,17 @@ def test_sdict_touchstone_rejects_frequency_mismatch(tmp_path: Path) -> None:
             np.array([1e9]),
             tmp_path / "mismatch.s1p",
         )
+
+
+def test_sdict_touchstone_path_extension(tmp_path: Path) -> None:
+    sdict = cast(sax.SDict, {("o1", "o1"): np.array([0.5 + 0j])})
+    path = sax.write_sdict_touchstone(sdict, np.array([1e9]), tmp_path / "model")
+    assert path == tmp_path / "model.s1p"
+    frequency, recovered = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(frequency, [1e9])
+    np.testing.assert_allclose(recovered["o1", "o1"], sdict["o1", "o1"])
+    with pytest.raises(ValueError, match=r"Expected \.s1p extension"):
+        sax.write_sdict_touchstone(sdict, np.array([1e9]), tmp_path / "wrong.s2p")
 
 
 def test_sdict_touchstone_rejects_duplicate_read_ports(tmp_path: Path) -> None:

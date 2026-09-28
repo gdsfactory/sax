@@ -51,7 +51,7 @@ def parse_touchstone(
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
         with StringIO(content_or_filename) as stream:
             stream.name = _touchstone_name(content_or_filename)
-            ntwk = rf.Network(stream)
+            ntwk = rf.Network(stream)  # type: ignore[reportArgumentType]
     else:
         path = Path(content_or_filename).resolve()
         if not path.exists():
@@ -68,7 +68,7 @@ def parse_touchstone(
     order = np.argsort(ntwk.f)
     if convert_to_wavelength:
         order = order[::-1]
-        coords = {"wl": sax.C_UM_S / ntwk.f[order]}
+        coords: dict[str, object] = {"wl": sax.C_UM_S / ntwk.f[order]}
     else:
         coords = {"f": ntwk.f[order]}
     # scikit-rf uses (output, input), whereas the tidy table labels directions.
@@ -83,7 +83,10 @@ def parse_touchstone(
     df["amp"] = np.abs(df["s"].to_numpy())
     df["phi"] = np.angle(df.pop("s").to_numpy())
     axis = "wl" if convert_to_wavelength else "f"
-    return df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]]
+    return cast(
+        pd.DataFrame,
+        df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]],
+    )
 
 
 def _touchstone_name(content: str) -> str:
@@ -234,6 +237,12 @@ def write_sdict_touchstone(
     matrix = matrix[:, order, :][:, :, order]
 
     path = Path(path)
+    suffix = f".s{len(labels)}p"
+    if not path.suffix:
+        path = path.with_suffix(suffix)
+    elif path.suffix.lower() != suffix:
+        msg = f"Expected {suffix} extension for {len(labels)} ports, got {path.suffix}"
+        raise ValueError(msg)
     path.parent.mkdir(parents=True, exist_ok=True)
     network = skrf.Network()
     network.frequency = frequency
