@@ -16,7 +16,9 @@ MATRIX = np.array([[0.1 + 0.2j, 0.25 - 0.3j], [0.5 + 0.6j, 0.4 + 0.1j]])
 @pytest.mark.parametrize("wavelength", [True, False])
 @pytest.mark.parametrize("raw", [True, False])
 def test_reader_external_asymmetric_fixture(
-    tmp_path: Path, *, wavelength: bool, raw: bool
+    tmp_path: Path,
+    wavelength: bool,  # noqa: FBT001
+    raw: bool,  # noqa: FBT001
 ) -> None:
     path = tmp_path / "external.s2p"
     path.write_text(TEXT)
@@ -30,10 +32,8 @@ def test_reader_external_asymmetric_fixture(
         ("b", "b"): MATRIX[1, 1],
     }
     for row in frame.to_dict("records"):
-        np.testing.assert_allclose(
-            row["amp"] * np.exp(1j * row["phi"]),
-            expected[row["port_in"], row["port_out"]],
-        )
+        actual = row["amp"] * np.exp(1j * row["phi"])
+        np.testing.assert_allclose(actual, expected[row["port_in"], row["port_out"]])
     coordinate = "wl" if wavelength else "f"
     np.testing.assert_allclose(
         frame[coordinate], sax.C_UM_S / 1e9 if wavelength else 1e9

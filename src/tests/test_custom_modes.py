@@ -1,3 +1,4 @@
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -5,14 +6,14 @@ import sax
 
 
 def _model() -> sax.SDict:
-    return sax.reciprocal({("a", "b"): 0.75})
+    return sax.reciprocal({("a", "b"): jnp.asarray(0.75)})
 
 
 @pytest.mark.parametrize("format_name", ["sdict", "scoo", "sdense"])
 @pytest.mark.parametrize("modes", [("X",), ("mode2", "mode10")])
 @pytest.mark.parametrize("wrapped", [False, True])
 def test_custom_modes_all_formats(
-    format_name: str, modes: tuple[str, ...], wrapped: bool
+    format_name: str, modes: tuple[str, ...], *, wrapped: bool
 ) -> None:
     convert = getattr(sax, format_name)
     if wrapped:
