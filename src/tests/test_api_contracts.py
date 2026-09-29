@@ -7,7 +7,10 @@ import sax
 
 
 def test_get_modes_unique_natural_order_all_formats() -> None:
-    data: sax.SDict = {("a@mode10", "b@mode10"): 1.0, ("a@mode2", "b@mode2"): 2.0}
+    data: sax.SDict = {
+        ("a@mode10", "b@mode10"): jnp.asarray(1.0),
+        ("a@mode2", "b@mode2"): jnp.asarray(2.0),
+    }
     for matrix in (data, sax.scoo(data), sax.sdense(data)):
         assert sax.get_modes(matrix) == ("mode2", "mode10")
 

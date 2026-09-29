@@ -7,7 +7,7 @@ import sax
 
 
 @pytest.mark.parametrize("batched", [False, True])
-def test_duplicate_coo_sums_consistently(batched: bool) -> None:
+def test_duplicate_coo_sums_consistently(*, batched: bool) -> None:
     values = jnp.array([2 + 1j, 3 - 1j, 4j, -4j])
     if batched:
         values = jnp.stack([values, values * 2])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Iterable
 from io import StringIO
@@ -17,7 +18,12 @@ import xarray as xr
 
 import sax
 
-__all__ = ["parse_touchstone", "write_touchstone"]
+__all__ = [
+    "parse_touchstone",
+    "read_sdict_touchstone",
+    "write_sdict_touchstone",
+    "write_touchstone",
+]
 
 
 def parse_touchstone(
@@ -45,7 +51,7 @@ def parse_touchstone(
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
         with StringIO(content_or_filename) as stream:
             stream.name = _touchstone_name(content_or_filename)
-            ntwk = rf.Network(stream)
+            ntwk = rf.Network(stream)  # type: ignore[reportArgumentType]
     else:
         path = Path(content_or_filename).resolve()
         if not path.exists():
@@ -62,7 +68,7 @@ def parse_touchstone(
     order = np.argsort(ntwk.f)
     if convert_to_wavelength:
         order = order[::-1]
-        coords = {"wl": sax.C_UM_S / ntwk.f[order]}
+        coords: dict[str, object] = {"wl": sax.C_UM_S / ntwk.f[order]}
     else:
         coords = {"f": ntwk.f[order]}
     # scikit-rf uses (output, input), whereas the tidy table labels directions.
@@ -77,7 +83,10 @@ def parse_touchstone(
     df["amp"] = np.abs(df["s"].to_numpy())
     df["phi"] = np.angle(df.pop("s").to_numpy())
     axis = "wl" if convert_to_wavelength else "f"
-    return df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]]
+    return cast(
+        pd.DataFrame,
+        df[[axis, "port_in", "port_out", "mode_in", "mode_out", "amp", "phi"]],
+    )
 
 
 def _touchstone_name(content: str) -> str:
@@ -197,8 +206,101 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
     return path
 
 
+def write_sdict_touchstone(
+    sdict: sax.SDict,
+    f: sax.ArrayLike,
+    path: str | Path,
+    *,
+    ports: Iterable[str] | None = None,
+    z0: float = 50.0,
+) -> Path:
+    """Write a frequency-swept SAX SDict to a Touchstone file.
+
+    ``f`` is in Hz and must match the SDict's frequency axis. Port names and
+    their order are recorded in a comment for a later round trip.
+    """
+    matrix, port_map = sax.sdense(sdict)
+    matrix = np.asarray(matrix, dtype=complex)
+    if matrix.ndim == 2:
+        matrix = matrix[np.newaxis, ...]
+    frequency = np.atleast_1d(np.asarray(f, dtype=float))
+    if matrix.ndim != 3 or frequency.ndim != 1 or matrix.shape[0] != frequency.size:
+        msg = "f must match the SDict's single frequency axis"
+        raise ValueError(msg)
+
+    model_ports = tuple(sorted(port_map, key=port_map.__getitem__))
+    labels = model_ports if ports is None else tuple(ports)
+    if len(labels) != len(model_ports) or set(labels) != set(model_ports):
+        msg = f"ports={labels} is not a permutation of model ports {model_ports}"
+        raise ValueError(msg)
+    order = [port_map[label] for label in labels]
+    matrix = matrix[:, order, :][:, :, order]
+
+    path = Path(path)
+    suffix = f".s{len(labels)}p"
+    if not path.suffix:
+        path = path.with_suffix(suffix)
+    elif path.suffix.lower() != suffix:
+        msg = f"Expected {suffix} extension for {len(labels)} ports, got {path.suffix}"
+        raise ValueError(msg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    network = skrf.Network()
+    network.frequency = frequency
+    network.s = matrix
+    network.z0 = np.full((frequency.size, len(labels)), z0)
+    network.name = path.stem
+    content = network.write_touchstone(return_string=True, form="ri")
+    if not content:
+        msg = "Failed to write touchstone content. Is the network empty?"
+        raise RuntimeError(msg)
+    content = (
+        "\n".join(
+            [
+                f"! ports: {', '.join(labels)}",
+                *(line for line in content.splitlines() if not line.startswith("!")),
+            ]
+        )
+        + "\n"
+    )
+    path.write_text(content)
+    return path
+
+
+def read_sdict_touchstone(
+    path: str | Path, *, ports: Iterable[str] | None = None
+) -> tuple[np.ndarray, sax.SDict]:
+    """Read a Touchstone file as frequencies in Hz and a SAX SDict."""
+    path = Path(path)
+    network = skrf.Network(str(path))
+    if np.any(network.z0 != network.z0.flat[0]):
+        msg = "per-port or frequency-dependent reference impedances are not supported"
+        raise ValueError(msg)
+    if ports is None:
+        match = re.search(
+            r"^\s*!\s*ports\s*:\s*(.+)$", path.read_text(), re.IGNORECASE | re.MULTILINE
+        )
+        labels = (
+            tuple(label.strip() for label in match.group(1).split(","))
+            if match
+            else tuple(
+                network.port_names or (f"o{i + 1}" for i in range(network.nports))
+            )
+        )
+    else:
+        labels = tuple(ports)
+    if len(labels) != network.nports or len(set(labels)) != len(labels):
+        msg = f"expected {network.nports} unique port labels, got {labels}"
+        raise ValueError(msg)
+    sdict = {
+        (port_in, port_out): network.s[:, j, i]
+        for i, port_in in enumerate(labels)
+        for j, port_out in enumerate(labels)
+    }
+    return network.f, cast(sax.SDict, sdict)
+
+
 def _get_port(pm: str) -> str:
-    return pm.split("@")[0]
+    return pm.split("@", maxsplit=1)[0]
 
 
 def _get_mode(pm: str) -> str:

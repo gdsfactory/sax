@@ -47,5 +47,5 @@ def test_joint_broadcast(
 
 def test_incompatible_shapes_rejected() -> None:
     model = _circuit("klu")
-    with pytest.raises(ValueError, match="[Ii]ncompatible shapes"):
+    with pytest.raises(ValueError, match=r"[Ii]ncompatible shapes"):
         model(a={"gain": jnp.ones((2,))}, b={"gain": jnp.ones((3,))})

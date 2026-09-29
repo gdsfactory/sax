@@ -1033,7 +1033,7 @@ def _get_port_combos(s: str, ports: list[str]) -> tuple[str, str]:
 
 
 def _get_port(pm: str) -> str:
-    return pm.split("@")[0]
+    return pm.split("@", maxsplit=1)[0]
 
 
 def _get_mode(pm: str) -> str:

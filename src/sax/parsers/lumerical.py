@@ -62,7 +62,7 @@ def parse_lumerical_dat(
 
 
 @overload
-def write_lumerical_dat(df: pd.DataFrame, path: None) -> str: ...
+def write_lumerical_dat(df: pd.DataFrame, path: None = None) -> str: ...
 
 
 @overload

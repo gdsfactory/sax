@@ -223,7 +223,9 @@ from .parsers import (
     parse_lumerical_dat,
     parse_mosaic,
     parse_touchstone,
+    read_sdict_touchstone,
     write_lumerical_dat,
+    write_sdict_touchstone,
     write_touchstone,
 )
 from . import models
@@ -400,6 +402,7 @@ __all__ = [  # noqa: RUF022
     "parse_lumerical_dat",
     "parse_mosaic",
     "parse_touchstone",
+    "read_sdict_touchstone",
     "parsers",
     "read",
     "reciprocal",
@@ -424,5 +427,6 @@ __all__ = [  # noqa: RUF022
     "wl_o",
     "wl_s",
     "write_lumerical_dat",
+    "write_sdict_touchstone",
     "write_touchstone",
 ]

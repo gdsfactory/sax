@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -15,7 +16,9 @@ MATRIX = np.array([[0.1 + 0.2j, 0.25 - 0.3j], [0.5 + 0.6j, 0.4 + 0.1j]])
 @pytest.mark.parametrize("wavelength", [True, False])
 @pytest.mark.parametrize("raw", [True, False])
 def test_reader_external_asymmetric_fixture(
-    tmp_path: Path, wavelength: bool, raw: bool
+    tmp_path: Path,
+    wavelength: bool,  # noqa: FBT001
+    raw: bool,  # noqa: FBT001
 ) -> None:
     path = tmp_path / "external.s2p"
     path.write_text(TEXT)
@@ -28,10 +31,9 @@ def test_reader_external_asymmetric_fixture(
         ("b", "a"): MATRIX[0, 1],
         ("b", "b"): MATRIX[1, 1],
     }
-    for row in frame.itertuples():
-        np.testing.assert_allclose(
-            row.amp * np.exp(1j * row.phi), expected[row.port_in, row.port_out]
-        )
+    for row in frame.to_dict("records"):
+        actual = row["amp"] * np.exp(1j * row["phi"])
+        np.testing.assert_allclose(actual, expected[row["port_in"], row["port_out"]])
     coordinate = "wl" if wavelength else "f"
     np.testing.assert_allclose(
         frame[coordinate], sax.C_UM_S / 1e9 if wavelength else 1e9
@@ -77,7 +79,10 @@ def test_raw_multiline_three_port() -> None:
 
 
 def test_raw_v2() -> None:
-    text = "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    text = (
+        "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 1\n"
+        "[Number of Frequencies] 1\n[Network Data]\n1e9 .5 .25\n[End]\n"
+    )
     frame = sax.parse_touchstone(text)
     np.testing.assert_allclose(frame["amp"], abs(0.5 + 0.25j))
 
@@ -85,3 +90,73 @@ def test_raw_v2() -> None:
 def test_raw_invalid_record() -> None:
     with pytest.raises(ValueError, match="infer port count"):
         sax.parse_touchstone("# Hz S RI R 50\n1e9 1 0 2 0\n")
+
+
+def test_sdict_touchstone_round_trip(tmp_path: Path) -> None:
+    frequency = np.array([1e9, 2e9])
+    matrix = np.array([MATRIX, 0.5 * MATRIX])
+    sdict = cast(
+        sax.SDict,
+        {
+            (port_in, port_out): matrix[:, j, i]
+            for i, port_in in enumerate(("input", "output"))
+            for j, port_out in enumerate(("input", "output"))
+        },
+    )
+    path = sax.write_sdict_touchstone(
+        sdict, frequency, tmp_path / "model.s2p", ports=("output", "input"), z0=75.0
+    )
+    assert path.read_text().startswith("! ports: output, input\n")
+    network = skrf.Network(str(path))
+    np.testing.assert_allclose(network.s, matrix[:, ::-1, ::-1])
+    np.testing.assert_allclose(network.z0, 75.0)
+
+    recovered_frequency, recovered = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(recovered_frequency, frequency)
+    assert set(recovered) == set(sdict)
+    for ports, values in sdict.items():
+        np.testing.assert_allclose(recovered[ports], values)
+    with pytest.raises(ValueError, match="not a permutation"):
+        sax.write_sdict_touchstone(
+            sdict, frequency, tmp_path / "bad.s2p", ports=("input", "unknown")
+        )
+
+
+def test_sdict_touchstone_rejects_frequency_mismatch(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="frequency axis"):
+        sax.write_sdict_touchstone(
+            cast(sax.SDict, {("o1", "o1"): np.array([1 + 0j, 0.5 + 0j])}),
+            np.array([1e9]),
+            tmp_path / "mismatch.s1p",
+        )
+
+
+def test_sdict_touchstone_path_extension(tmp_path: Path) -> None:
+    sdict = cast(sax.SDict, {("o1", "o1"): np.array([0.5 + 0j])})
+    path = sax.write_sdict_touchstone(sdict, np.array([1e9]), tmp_path / "model")
+    assert path == tmp_path / "model.s1p"
+    frequency, recovered = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(frequency, [1e9])
+    np.testing.assert_allclose(recovered["o1", "o1"], sdict["o1", "o1"])
+    with pytest.raises(ValueError, match=r"Expected \.s1p extension"):
+        sax.write_sdict_touchstone(sdict, np.array([1e9]), tmp_path / "wrong.s2p")
+
+
+def test_sdict_touchstone_rejects_duplicate_read_ports(tmp_path: Path) -> None:
+    path = tmp_path / "external.s2p"
+    path.write_text(TEXT)
+    frequency, sdict = sax.read_sdict_touchstone(path)
+    np.testing.assert_allclose(frequency, [1e9])
+    np.testing.assert_allclose(sdict["o1", "o2"], [MATRIX[1, 0]])
+    with pytest.raises(ValueError, match="unique port labels"):
+        sax.read_sdict_touchstone(path, ports=("o1", "o1"))
+
+
+def test_sdict_touchstone_rejects_nonuniform_reference(tmp_path: Path) -> None:
+    path = tmp_path / "external.s2p"
+    path.write_text(
+        "[Version] 2.0\n# Hz S RI R 50\n[Number of Ports] 2\n"
+        "[Reference] 50 50.0001\n[Network Data]\n1e9 1 0 0 0 0 0 1 0\n[End]\n"
+    )
+    with pytest.raises(ValueError, match="reference impedances"):
+        sax.read_sdict_touchstone(path)

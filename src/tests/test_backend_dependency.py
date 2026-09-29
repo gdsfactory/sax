@@ -27,7 +27,7 @@ except ModuleNotFoundError as exc:
 else:
     raise AssertionError("Missing required klujax unexpectedly allowed import")
 """
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stdout + result.stderr

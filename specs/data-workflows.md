@@ -45,6 +45,14 @@ conversion defaults; do not infer a single global policy.
   v1 full-matrix records supply the inferred port count, and v2 declares its count.
 - `write_touchstone(df, path=None)` returns text or writes a file and returns its
   resolved path. Missing extensions become `.sNp`; mismatched extensions warn.
+- `write_sdict_touchstone(sdict, f, path)` writes a frequency-swept SAX dictionary
+  directly, with `f` in Hz and a matching frequency axis. It records the port
+  order in a comment; an explicit order must permute the model ports. An extensionless
+  path gains `.sNp` for the port count, and a mismatched suffix is rejected.
+- `read_sdict_touchstone(path)` returns frequencies in Hz and a dictionary keyed
+  by `(input_port, output_port)`. It restores the port-order comment, accepts
+  explicit labels, and rejects nonuniform reference impedances that the returned
+  dictionary cannot represent.
 - `write_lumerical_dat` returns text in memory or overwrites a path. Repeated writes
   do not append duplicate blocks, and string output creates no temporary file.
   `test_lumerical_writer.py` checks repeatability, input isolation, and parsed values.
@@ -55,7 +63,8 @@ Evidence: [`parsers/lumerical.py`](../src/sax/parsers/lumerical.py),
 [`parsers/touchstone.py`](../src/sax/parsers/touchstone.py) (`_validate_columns`).
 [`test_imports.py`](../src/tests/test_imports.py) checks imports, not parser numerical
 round trips. `src/tests/test_touchstone.py` verifies asymmetric import/export
-independently, raw v1/v2 text, default labels, validation, and frequency reads.
+independently, raw v1/v2 text, default labels, validation, frequency reads, and
+the direct S-dictionary round trip.
 
 ## Grid conversion and interpolation
 

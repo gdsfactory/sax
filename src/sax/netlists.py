@@ -292,6 +292,19 @@ def _get_connectivity_graph(netlist: sax.Netlist) -> nx.Graph:
 def _flatten_netlist_into(  # noqa: PLR0912,C901
     recnet: sax.RecursiveNetlist, net: sax.Netlist, sep: str
 ) -> None:
+    def resolve_endpoint(
+        endpoint: str, instance_name: str, ports: dict[str, str]
+    ) -> str | None:
+        target_name, port_name = endpoint.split(",")
+        if target_name != instance_name:
+            return endpoint
+        if port_name not in ports:
+            warnings.warn(
+                f"Port {endpoint} not found. Reference ignored.", stacklevel=2
+            )
+            return None
+        return ports[port_name]
+
     for name, instance in list(net["instances"].items()):
         component = instance["component"]
         if component not in recnet:
@@ -304,27 +317,22 @@ def _flatten_netlist_into(  # noqa: PLR0912,C901
         ports = {k: f"{name}{sep}{v}" for k, v in child_net.get("ports", {}).items()}
         net["connections"] = net.get("connections", {})
 
-        def resolve_endpoint(endpoint: str) -> str | None:
-            instance_name, port_name = endpoint.split(",")
-            if instance_name != name:
-                return endpoint
-            if port_name not in ports:
-                warnings.warn(
-                    f"Port {endpoint} not found. Reference ignored.", stacklevel=2
-                )
-                return None
-            return ports[port_name]
-
         connections = {}
         for ip1, ip2 in net["connections"].items():
-            p1, p2 = resolve_endpoint(ip1), resolve_endpoint(ip2)
+            p1, p2 = (
+                resolve_endpoint(ip1, name, ports),
+                resolve_endpoint(ip2, name, ports),
+            )
             if p1 is not None and p2 is not None:
                 connections[p1] = p2
         net["connections"] = connections
         if "nets" in net or "nets" in child_net:
             nets: sax.Nets = []
             for link in net.get("nets", []):
-                p1, p2 = resolve_endpoint(link["p1"]), resolve_endpoint(link["p2"])
+                p1, p2 = (
+                    resolve_endpoint(link["p1"], name, ports),
+                    resolve_endpoint(link["p2"], name, ports),
+                )
                 if p1 is not None and p2 is not None:
                     nets.append({**link, "p1": p1, "p2": p2})
             nets.extend(

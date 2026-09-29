@@ -4,9 +4,9 @@ requires = ["setuptools>=61", "uv", "build", "wheel"]
 
 [dependency-groups]
 dev = [
-  {include-group = "docs"},
-  {include-group = "lint"},
-  {include-group = "test"},
+  { include-group = "docs" },
+  { include-group = "lint" },
+  { include-group = "test" },
   "build>=1.4.3,<2.0.0",
   "gdsfactory>=9.40.0,<10.0.0",
   "meow-sim>=0.15.0,<0.16.0",
@@ -44,7 +44,7 @@ test = [
 ]
 
 [project]
-authors = [{name = "Floris Laporte", email = "floris.laporte@gmail.com"}]
+authors = [{ name = "Floris Laporte", email = "floris.laporte@gmail.com" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -93,7 +93,7 @@ keywords = [
   "photonic-circuit",
   "photonic-optimization"
 ]
-license = {text = "Apache Software License"}
+license = { text = "Apache Software License" }
 name = "sax"
 readme = "README.md"
 requires-python = ">=3.11.0"

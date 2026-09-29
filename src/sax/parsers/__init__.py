@@ -3,7 +3,12 @@
 from .kfnetlist import parse_kfnetlist, parse_kfnetlist_recursive
 from .lumerical import parse_lumerical_dat, write_lumerical_dat
 from .mosaic import parse_mosaic
-from .touchstone import parse_touchstone, write_touchstone
+from .touchstone import (
+    parse_touchstone,
+    read_sdict_touchstone,
+    write_sdict_touchstone,
+    write_touchstone,
+)
 
 __all__ = [
     "parse_kfnetlist",
@@ -11,6 +16,8 @@ __all__ = [
     "parse_lumerical_dat",
     "parse_mosaic",
     "parse_touchstone",
+    "read_sdict_touchstone",
     "write_lumerical_dat",
+    "write_sdict_touchstone",
     "write_touchstone",
 ]
