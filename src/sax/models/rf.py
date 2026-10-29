@@ -188,13 +188,20 @@ def impedance(
 
 @partial(jax.jit, inline=True)
 def admittance(
-    *, f: sax.FloatArrayLike = DEFAULT_FREQUENCY, y: sax.ComplexLike = 1 / 50
+    *,
+    f: sax.FloatArrayLike = DEFAULT_FREQUENCY,
+    y: sax.ComplexLike = 1 / 50,
+    z0: sax.ComplexLike = 50,
 ) -> sax.SDict:
-    r"""Generalized two-port admittance element.
+    r"""Two-port series element specified by its admittance.
+
+    Equivalent to ``impedance(f=f, z=1/y, z0=z0)`` for nonzero ``y``.
+    Zero admittance gives an open circuit. This is not a shunt element.
 
     Args:
         f: Frequency in Hz
         y: Admittance in siemens
+        z0: Reference impedance in ohms.
 
     Returns:
         S-dictionary representing the admittance element
@@ -214,7 +221,7 @@ def admittance(
         sax.set_port_naming_strategy("optical")
 
         f = np.linspace(1e9, 10e9, 500)
-        s = sax.models.rf.admittance(f=f, y=1 / 75)
+        s = sax.models.rf.admittance(f=f, y=1 / 75, z0=50)
         plt.figure()
         plt.plot(f / 1e9, np.abs(s[("o1", "o1")]), label="|S11|")
         plt.plot(f / 1e9, np.abs(s[("o1", "o2")]), label="|S12|")
@@ -225,10 +232,11 @@ def admittance(
         ```
     """
     one = jnp.ones_like(jnp.asarray(f))
+    yn = 2 * z0 * y
     sdict = {
-        ("o1", "o1"): 1 / (1 + y) * one,
-        ("o1", "o2"): y / (1 + y) * one,
-        ("o2", "o2"): 1 / (1 + y) * one,
+        ("o1", "o1"): 1 / (1 + yn) * one,
+        ("o1", "o2"): yn / (1 + yn) * one,
+        ("o2", "o2"): 1 / (1 + yn) * one,
     }
     return sax.reciprocal(sdict)
 

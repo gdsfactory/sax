@@ -70,6 +70,10 @@ permittivity/impedance/thickness/propagation helpers.
 
 - Frequency `f` is in **Hz**; resistance/reference impedance in **ohms**,
   capacitance in **farads**, inductance in **henries**.
+- `impedance` and `admittance` describe a series element with a default 50-ohm
+  reference impedance `z0`. `admittance` takes `y` in **siemens**, not normalized
+  units: `S11=1/(1+2*z0*y)`, `S21=2*z0*y/(1+2*z0*y)`. Zero `y` is an open circuit.
+  The former formula omitted `2*z0`; `z0=0.5` reproduces that normalization.
 - High-level `coplanar_waveguide` and `microstrip` geometry is in **micrometers**;
   they convert to meters internally. `transmission_line_s_params` uses length in
   **meters** and propagation constant in **1/m**.

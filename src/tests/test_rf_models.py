@@ -1,5 +1,6 @@
 from itertools import product
 
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -59,7 +60,53 @@ class TestRFModels:
         s = rf.admittance(f=freq_single, y=1 / 75)
 
         self._assert_s_params_dict(s, expected_shape=())
-        self._assert_s_param(s, ("o1", "o1"), 1 / (1 + 1 / 75))
+        self._assert_s_param(s, ("o1", "o1"), 75 / (75 + 100))
+        self._assert_s_param(s, ("o1", "o2"), 100 / (75 + 100))
+
+    @pytest.mark.parametrize("z0", [25.0, 50.0, 75.0])
+    @pytest.mark.parametrize("y", [1 / 75, 0.02j, 0.01 - 0.03j])
+    def test_admittance_matches_impedance(self, y: complex, z0: float) -> None:
+        """Reciprocal impedance and admittance describe the same series element."""
+        f = jnp.linspace(1e9, 10e9, 6).reshape(2, 3)
+        actual = rf.admittance(f=f, y=y, z0=z0)
+        expected = rf.impedance(f=f, z=1 / y, z0=z0)
+
+        assert actual.keys() == expected.keys()
+        for port_pair in expected:
+            assert actual[port_pair].shape == f.shape
+            assert jnp.allclose(actual[port_pair], expected[port_pair])
+
+    def test_admittance_broadcasting(self) -> None:
+        """Frequency, admittance, and reference impedance broadcast together."""
+        f = jnp.array([[1e9], [2e9], [3e9]])
+        y = jnp.array([[0.01 + 0.02j, 0.02 - 0.03j]])
+        z0 = jnp.array([[25.0], [50.0], [75.0]])
+        actual = rf.admittance(f=f, y=y, z0=z0)
+        expected = rf.impedance(f=f, z=1 / y, z0=z0)
+
+        for port_pair in expected:
+            assert actual[port_pair].shape == (3, 2)
+            assert jnp.allclose(actual[port_pair], expected[port_pair])
+
+    def test_admittance_open_circuit(self) -> None:
+        """Zero series admittance is an open circuit, including under JIT and grad."""
+        s = jax.jit(rf.admittance)(f=jnp.array([1e9, 2e9]), y=0.0, z0=75.0)
+        for port_pair, value in s.items():
+            assert value.shape == (2,)
+            assert jnp.allclose(value, float(port_pair[0] == port_pair[1]))
+
+        derivative = jax.jit(
+            jax.grad(lambda y: rf.admittance(f=1e9, y=y, z0=75.0)["o1", "o1"])
+        )(0.0)
+        assert jnp.allclose(derivative, -150.0)
+
+    def test_admittance_lossless(self) -> None:
+        """A reactive series element has a unitary scattering matrix."""
+        s = rf.admittance(f=1e9, y=0.02j)
+        matrix = jnp.array(
+            [[s["o1", "o1"], s["o1", "o2"]], [s["o2", "o1"], s["o2", "o2"]]]
+        )
+        assert jnp.allclose(matrix.conj().T @ matrix, jnp.eye(2), atol=1e-12)
 
     def test_capacitor(self, freq_single: float) -> None:
         """Test capacitor element."""
