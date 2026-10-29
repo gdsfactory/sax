@@ -51,6 +51,13 @@ No kernel setup or dependency synchronization occurs in this command.
 
 ## Reproduce targeted tests
 
+The Test workflow reads the inclusive lower bound of `project.requires-python`
+from `pyproject.toml` and sets `UV_PYTHON` to that major/minor version for its test,
+coverage, and pre-commit jobs. This keeps CI on the minimum supported Python series
+even when runner tools install a newer interpreter.
+The pre-commit job uses `just dev`, which honors `UV_PYTHON` and defaults to Python
+3.12 when that variable is unset.
+
 Preferred environment setup respects the checked-in metadata and lockfile:
 
 ```sh

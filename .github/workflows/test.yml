@@ -7,8 +7,38 @@ on:
       - main
 
 jobs:
-  pre-commit:
+  python-version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      minimum: ${{ steps.minimum.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Read minimum Python version
+        id: minimum
+        shell: python {0}
+        run: |
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          minimum = re.search(r">=\s*(\d+\.\d+)", project["requires-python"])
+          if minimum is None:
+              raise ValueError("requires-python must contain an inclusive lower bound")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"version={minimum.group(1)}\n")
+
+  pre-commit:
+    needs: python-version
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: ${{ needs.python-version.outputs.minimum }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -22,7 +52,10 @@ jobs:
         uses: pre-commit/action@v3.0.1
 
   test:
+    needs: python-version
     runs-on: ${{ matrix.os }}
+    env:
+      UV_PYTHON: ${{ needs.python-version.outputs.minimum }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +79,10 @@ jobs:
           path: ./src/tests
 
   test_coverage:
+    needs: python-version
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: ${{ needs.python-version.outputs.minimum }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

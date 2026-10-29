@@ -1,5 +1,5 @@
 dev:
-  uv venv --python 3.12 --clear
+  uv venv --python "${UV_PYTHON:-3.12}" --clear
   uv sync --dev
   uv pip install -e .
   uv run pre-commit install
