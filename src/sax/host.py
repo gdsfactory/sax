@@ -31,6 +31,25 @@ The protocol
     The host's table-reading entry: :func:`sax.interpolation.interpolate_xarray`
     (also exported as ``sax.interpolate_xarray``).
 
+The protocol also carries the *model-writing* surface a model module would otherwise
+take from ``jax``/``sax`` directly, so a model module never imports either:
+
+``jit``
+    The engine's just-in-time decorator: the real :func:`jax.jit` for sax.
+``ensure_compile_time_eval``
+    The tracing guard the library uses to force table loads at compile time
+    (:func:`jax.ensure_compile_time_eval`).
+``reciprocal``
+    :func:`sax.reciprocal`.
+``set_port_naming_strategy(strategy)``
+    Apply a port-naming strategy to the *engine's own models* -- for sax that is the
+    module-global :func:`sax.ports.set_port_naming_strategy`, because ``sax.models``
+    reads it. Distinct from ``port_namer``, which is per-host and never touches a
+    global.
+``SDict`` / ``SCoo`` / ``SType`` / ``FloatArrayLike`` / ``FloatArray`` / ``ArrayLike``
+    The type aliases the models annotate with, re-exported from :mod:`sax` (or defined
+    where the engine has no equivalent).
+
 This module is purely additive: it changes no existing behaviour and adds no
 import-time work for existing callers (it is not imported by :mod:`sax`).
 """
@@ -39,8 +58,10 @@ from __future__ import annotations
 
 from typing import cast
 
+import jax
 import jax.numpy as xp
 
+import sax
 from sax import models as sm
 from sax.backends import evaluate_circuit_fg
 from sax.interpolation import interpolate_xarray as interpolate
@@ -48,11 +69,21 @@ from sax.ports import PortNamer as _PortNamer
 from sax.ports import PortNamingStrategy
 
 __all__ = [
+    "ArrayLike",
+    "FloatArray",
+    "FloatArrayLike",
     "PortNamer",
     "PortNaming",
+    "SCoo",
+    "SDict",
+    "SType",
     "differentiable",
+    "ensure_compile_time_eval",
     "interpolate",
+    "jit",
     "port_namer",
+    "reciprocal",
+    "set_port_naming_strategy",
     "sm",
     "solve",
     "xp",
@@ -61,6 +92,32 @@ __all__ = [
 differentiable = True
 
 PortNamer = _PortNamer
+
+# --------------------------------------------------------------------------------------
+# jit / ensure_compile_time_eval -- the engine's tracing surface
+# --------------------------------------------------------------------------------------
+# The real jax decorators. ``@jit`` and ``@partial(jit, inline=True)`` behave exactly
+# as on jax.jit.
+jit = jax.jit
+ensure_compile_time_eval = jax.ensure_compile_time_eval
+
+# --------------------------------------------------------------------------------------
+# Type aliases -- re-exported so a model module annotates without importing sax
+# --------------------------------------------------------------------------------------
+SDict = sax.SDict
+SCoo = sax.SCoo
+SType = sax.SType
+FloatArrayLike = sax.FloatArrayLike
+FloatArray = sax.FloatArray
+try:  # jaxtyping.ArrayLike if present, else a structural union
+    from jaxtyping import ArrayLike
+except ModuleNotFoundError:  # pragma: no cover - jaxtyping is a sax dependency
+    ArrayLike = sax.FloatArrayLike  # type: ignore[assignment,misc]
+
+# --------------------------------------------------------------------------------------
+# reciprocal -- re-exported so a model module does not import sax for it
+# --------------------------------------------------------------------------------------
+reciprocal = sax.reciprocal
 
 
 # --------------------------------------------------------------------------------------
@@ -130,6 +187,20 @@ class PortNaming:
 
 
 port_namer = PortNaming()
+
+
+def set_port_naming_strategy(strategy: str) -> PortNamingStrategy:
+    """Apply a port-naming strategy to sax's own models and to this host.
+
+    ``sax.models`` names its ports from the module-global strategy, so a model codebase
+    that wants optical keys from ``sm.straight`` must set *that* global. This is the
+    routing entry for ``sax.set_port_naming_strategy``: it sets the global (exactly as
+    calling :func:`sax.set_port_naming_strategy` does) and keeps ``port_namer`` in sync.
+    """
+    s = _check_strategy(strategy)
+    sax.ports.set_port_naming_strategy(s)
+    port_namer.set_strategy(s)
+    return s
 
 
 # --------------------------------------------------------------------------------------

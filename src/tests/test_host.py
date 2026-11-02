@@ -13,12 +13,76 @@ import sax
 import sax.ports
 from sax import host
 
-PROTOCOL = ("xp", "sm", "solve", "port_namer", "differentiable", "interpolate")
+PROTOCOL = (
+    "xp",
+    "sm",
+    "solve",
+    "port_namer",
+    "differentiable",
+    "interpolate",
+    "jit",
+    "ensure_compile_time_eval",
+    "reciprocal",
+    "set_port_naming_strategy",
+    "SDict",
+    "SCoo",
+    "SType",
+    "FloatArrayLike",
+    "FloatArray",
+    "ArrayLike",
+)
 
 
 def test_host_exposes_every_protocol_attribute() -> None:
     for name in PROTOCOL:
         assert hasattr(host, name), f"sax.host is missing the attribute {name!r}"
+
+
+def test_jit_is_the_real_jax_jit_in_both_forms() -> None:
+    import functools
+
+    import jax
+
+    assert host.jit is jax.jit
+
+    @host.jit
+    def bare(x):  # noqa: ANN001, ANN202
+        return x + 1
+
+    @functools.partial(host.jit, inline=True)
+    def parameterised(x):  # noqa: ANN001, ANN202
+        return x + 1
+
+    assert bare(1) == 2
+    assert parameterised(1) == 2
+
+
+def test_ensure_compile_time_eval_is_jax_and_usable() -> None:
+    import jax
+
+    assert host.ensure_compile_time_eval is jax.ensure_compile_time_eval
+    with host.ensure_compile_time_eval():
+        assert True
+
+
+def test_reciprocal_and_aliases_are_sax_s() -> None:
+    assert host.reciprocal is sax.reciprocal
+    assert host.SDict is sax.SDict
+    assert host.SCoo is sax.SCoo
+    assert host.SType is sax.SType
+    assert host.FloatArrayLike is sax.FloatArrayLike
+    assert host.FloatArray is sax.FloatArray
+
+
+def test_set_port_naming_strategy_touches_the_engine_global() -> None:
+    before = sax.get_port_naming_strategy()
+    try:
+        host.set_port_naming_strategy("optical")
+        assert sax.get_port_naming_strategy() == "optical"
+        assert host.port_namer.get_strategy() == "optical"
+    finally:
+        sax.set_port_naming_strategy(before)
+        host.port_namer.set_strategy(before)
 
 
 def test_xp_is_jax_numpy() -> None:
