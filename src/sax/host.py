@@ -12,8 +12,8 @@ The protocol
 ``xp``
     The array module the host's models are written against: ``jax.numpy`` here.
 ``sm``
-    The host's model library: ``sax.models`` here (``sox_py.models`` /
-    ``socklu.models`` elsewhere).
+    The host's model library: ``sax.models`` here (another engine's model
+    library elsewhere).
 ``solve(connections, ports, instances)``
     A *nested* circuit solve, so a composed model calls its host instead of a
     specific backend. This wraps :func:`sax.backends.evaluate_circuit_fg`, the nested
@@ -138,8 +138,8 @@ class PortNaming:
     """The host's port-naming strategy, carried on the host.
 
     Unlike :mod:`sax.ports`' module-global ``set_port_naming_strategy``, this holds
-    its own strategy, so two hosts (sax and socklu, say) can carry different
-    conventions in one process without clobbering each other. ``namer``/``names``
+    its own strategy, so two hosts can carry different conventions in one
+    process without clobbering each other. ``namer``/``names``
     delegate to :class:`sax.ports.PortNamer` with the strategy passed *explicitly*,
     so the global is never read or written.
     """
