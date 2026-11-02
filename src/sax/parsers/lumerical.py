@@ -10,10 +10,9 @@ import warnings
 from io import StringIO
 from pathlib import Path
 from textwrap import dedent
-from typing import cast, overload
+from typing import TYPE_CHECKING, cast, overload
 
 import numpy as np
-import pandas as pd
 from lark import Lark, Token, Transformer, Tree, v_args
 from numpy.typing import NDArray
 from typing_extensions import TypedDict
@@ -21,6 +20,9 @@ from typing_extensions import TypedDict
 import sax
 
 from .touchstone import _validate_columns
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def parse_lumerical_dat(
@@ -41,6 +43,8 @@ def parse_lumerical_dat(
     Note:
         This function was adapted from the `simphony` load_sparams function.
     """
+    import pandas as pd
+
     msg = (
         "The `parse_lumerical_dat` function is experimental. "
         "If you encounter any issues, "
@@ -83,6 +87,8 @@ def write_lumerical_dat(
     Returns:
         Path to the written file or string content if path is None.
     """
+    import pandas as pd
+
     df = df.copy()
     in_amp_phi_format, in_wl_format = _validate_columns(df)
     modes = {*df["mode_in"], *df["mode_out"]}
@@ -127,6 +133,8 @@ def write_lumerical_dat(
 class _SparamsTransformer(Transformer):
     @v_args(inline=True)
     def start(self, header: str, *datablocks: pd.DataFrame) -> tuple[str, pd.DataFrame]:
+        import pandas as pd
+
         data = pd.concat(datablocks, ignore_index=True)
         return header, data
 
@@ -134,6 +142,8 @@ class _SparamsTransformer(Transformer):
     def datablock(
         self, ports: _PortsDict, shape: tuple[int, int], values: NDArray[np.float64]
     ) -> pd.DataFrame:
+        import pandas as pd
+
         sweepparams = ports["sweepparams"] or []
         columns = np.array([*sweepparams, "f", "mag", "phase"])
         df = pd.DataFrame(values, columns=columns)
