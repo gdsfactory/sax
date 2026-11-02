@@ -7,18 +7,18 @@ import sys
 import warnings
 from collections.abc import Callable
 from functools import partial
-from typing import IO, Annotated, Any, TypeAlias, overload
+from typing import IO, TYPE_CHECKING, Annotated, Any, TypeAlias, overload
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optax
-import pandas as pd
-import sympy
 from jaxtyping import Array
 from typing_extensions import TypedDict
 
 import sax
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 __all__ = [
     "NeuralFitResult",
@@ -69,6 +69,8 @@ def neural_fit(
     Raises:
         RuntimeError: If all training tours fail.
     """
+    import pandas as pd
+
     df_work = data.copy()
 
     if features is None:
@@ -168,6 +170,8 @@ def neural_fit_equations(result: NeuralFitResult) -> dict[str, Equation]:
     Returns:
         Dictionary mapping target names to symbolic equations.
     """
+    import sympy
+
     X_list = [sympy.Symbol(f) for f in result["features"]]
     activation_fn = getattr(sympy, result["activation_fn"].__name__, None)
     if activation_fn is None:
@@ -431,6 +435,8 @@ def train_network(
     Returns:
         Tuple of (best parameters, training history).
     """
+    import optax
+
     params = init_fn(key)
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(params)  # type: ignore[reportAgumentType]

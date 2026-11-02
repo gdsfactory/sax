@@ -5,18 +5,20 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from functools import partial
 from itertools import product
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pandas as pd
-import xarray as xr
 from jaxtyping import Array
 from natsort import natsorted
 from numpy.typing import NDArray
 
 import sax
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import xarray as xr
 
 __all__ = [
     "interpolate_xarray",
@@ -82,6 +84,9 @@ def to_xarray(
         stacked_data: the data to convert
         target_names: the names of the target columns.
     """
+    import pandas as pd
+    import xarray as xr
+
     target_names = list(target_names)
     df = stacked_data.copy()
     for name in target_names:
@@ -121,6 +126,8 @@ def to_df(
             The kwargs are ignored when the object is an xarray as the coordinates are
             already embedded in the xarray in that case.
     """
+    import xarray as xr
+
     if isinstance(obj, xr.DataArray):
         xarr = obj
         stacked = xarr.stack(__stacked_dim=xarr.dims)  # noqa: PD013
@@ -222,6 +229,9 @@ def _extract_strings(
 
 
 def _sdict_to_df(stype: sax.SType, **coords: sax.ArrayLike) -> pd.DataFrame:
+    import pandas as pd
+    import xarray as xr
+
     if not coords:
         msg = "The coords of at least one dimension should be given."
         raise ValueError(msg)

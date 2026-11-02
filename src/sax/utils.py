@@ -11,6 +11,7 @@ from functools import partial, wraps
 from hashlib import md5
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     NamedTuple,
     TypeVar,
@@ -24,14 +25,15 @@ from typing import (
 import jax
 import jax.numpy as jnp
 import numpy as np
-import orjson
-import pandas as pd
 import yaml
 from numpy.exceptions import ComplexWarning
 
 import sax
 
 from .s import reciprocal
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 T = TypeVar("T")
 
@@ -693,6 +695,8 @@ def hash_dict(dic: dict) -> int:
         # Same settings will always produce the same hash
         ```
     """
+    import orjson
+
     return int(
         md5(
             orjson.dumps(
@@ -841,6 +845,8 @@ def wide_to_tidy(df: pd.DataFrame, ports: Iterable[str] | None = None) -> pd.Dat
             - 're': Real part of S-parameters.
             - 'im': Imaginary part of S-parameters.
     """
+    import pandas as pd
+
     df.columns = [re.sub("[^a-z0-9]", "", c.lower()) for c in df.columns]
     df_im = df[["wl", *[c for c in df.columns if "im" in c]]]
     df_im = df_im.melt(id_vars="wl", value_name="im")
