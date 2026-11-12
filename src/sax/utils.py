@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import os
+import platform
 import re
+import sys
 import warnings
 from collections.abc import Callable, Iterable, Iterator
 from copy import deepcopy
@@ -38,6 +41,7 @@ T = TypeVar("T")
 __all__ = [
     "clean_string",
     "copy_settings",
+    "enable_compilation_cache",
     "flatten_dict",
     "get_settings",
     "grouped_interp",
@@ -1039,3 +1043,77 @@ def _get_port(pm: str) -> str:
 def _get_mode(pm: str) -> str:
     _, *m = pm.split("@")
     return "".join(m) or "1"
+
+
+def enable_compilation_cache(
+    path: str | Path | None = None,
+    *,
+    min_compile_time_secs: float = 0.0,
+) -> Path:
+    """Make jax keep its compiled executables on disk, and return the directory used.
+
+    Jax compiles a circuit into executables that live only as long as the process,
+    so every new process pays for them again: a real SAX circuit triggers a few
+    hundred small compilations, which is the largest single cost of a cold run.
+    Setting jax's persistent cache makes the next process reuse them instead.
+
+    ``min_compile_time_secs`` defaults to ``0.0`` here, unlike jax's own default of
+    one second, because these compilations are individually far below a second —
+    with the jax default none of them are cached at all, which is the whole point
+    of the feature.
+
+    What this does *not* save: jax keys its cache after IR lowering, so tracing and
+    MLIR lowering are still paid in every process. Call it before the first trace
+    of a circuit.
+
+    Args:
+        path: cache directory. Defaults to ``$SAX_CACHE_DIR`` when that is set,
+            otherwise a per-machine directory under ``$XDG_CACHE_HOME``/``~/.cache``.
+        min_compile_time_secs: compilations faster than this are not cached.
+
+    Returns:
+        The directory the cache now uses, created if it did not exist.
+
+    Note:
+        Compiled executables are only portable between hosts with the same CPU
+        features; XLA warns, and can crash, when it loads one built for a different
+        feature set. The default directory is therefore scoped by jax/jaxlib version
+        *and* the host's CPU feature string. Pass ``path`` (or ``SAX_CACHE_DIR``) to
+        point several machines at one shared cache only when they are homogeneous.
+    """
+    directory = Path(
+        path or os.environ.get("SAX_CACHE_DIR") or _default_cache_dir()
+    ).expanduser()
+    directory.mkdir(parents=True, exist_ok=True)
+    jax.config.update("jax_compilation_cache_dir", str(directory))
+    jax.config.update(
+        "jax_persistent_cache_min_compile_time_secs", min_compile_time_secs
+    )
+    return directory
+
+
+def _default_cache_dir() -> Path:
+    """A cache directory that is safe to reuse on this machine and on no other."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        jaxlib_version = version("jaxlib")
+    except PackageNotFoundError:  # pragma: no cover - jax ships jaxlib
+        jaxlib_version = ""
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    fingerprint = (
+        f"{jax.__version__}\0{jaxlib_version}\0{platform.machine()}\0{_cpu_features()}"
+    )
+    return base / "sax" / f"jax-{md5(fingerprint.encode()).hexdigest()[:12]}"
+
+
+def _cpu_features() -> str:
+    """The host CPU feature flags, which decide whether a cached binary will load."""
+    if sys.platform.startswith("linux"):
+        try:
+            for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+                if line.startswith("flags"):
+                    return line.split(":", maxsplit=1)[1].strip()
+        except OSError:  # pragma: no cover - /proc being absent is the exception
+            pass
+    return platform.processor()
