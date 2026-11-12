@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import jax
 import pytest
@@ -14,21 +15,31 @@ import sax
 import sax.utils
 
 
+def read_jax_config(name: str) -> Any:  # noqa: ANN401
+    """Read a jax config option by name.
+
+    ``jax.config.<option>`` is installed on the class with ``setattr`` at import, and
+    only jax >= 0.11 declares that to type checkers, so pyright rejects the attribute
+    read on the jax 0.10 the CI pre-commit job pins.
+    """
+    return getattr(jax.config, name)
+
+
 def test_sets_the_jax_config(tmp_path: Path) -> None:
     directory = sax.enable_compilation_cache(tmp_path / "cache")
 
-    assert Path(jax.config.jax_compilation_cache_dir) == tmp_path / "cache"
+    assert Path(read_jax_config("jax_compilation_cache_dir")) == tmp_path / "cache"
     assert directory == tmp_path / "cache"
     assert directory.is_dir()
     # the whole point of the feature on sax's compilation sizes: jax's default of 1s
     # would skip every one of them
-    assert jax.config.jax_persistent_cache_min_compile_time_secs == 0.0
+    assert read_jax_config("jax_persistent_cache_min_compile_time_secs") == 0.0
 
 
 def test_a_min_compile_time_can_be_raised(tmp_path: Path) -> None:
     sax.enable_compilation_cache(tmp_path / "cache", min_compile_time_secs=2.5)
 
-    assert jax.config.jax_persistent_cache_min_compile_time_secs == 2.5
+    assert read_jax_config("jax_persistent_cache_min_compile_time_secs") == 2.5
 
 
 def test_honours_the_env_var(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
