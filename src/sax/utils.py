@@ -11,6 +11,7 @@ from functools import partial, wraps
 from hashlib import md5
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     NamedTuple,
     TypeVar,
@@ -25,9 +26,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import orjson
-import pandas as pd
 import yaml
 from numpy.exceptions import ComplexWarning
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 import sax
 
@@ -841,6 +844,8 @@ def wide_to_tidy(df: pd.DataFrame, ports: Iterable[str] | None = None) -> pd.Dat
             - 're': Real part of S-parameters.
             - 'im': Imaginary part of S-parameters.
     """
+    import pandas as pd
+
     df.columns = [re.sub("[^a-z0-9]", "", c.lower()) for c in df.columns]
     df_im = df[["wl", *[c for c in df.columns if "im" in c]]]
     df_im = df_im.melt(id_vars="wl", value_name="im")

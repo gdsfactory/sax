@@ -12,9 +12,6 @@ from typing import cast, overload
 
 import numpy as np
 import pandas as pd
-import skrf
-import skrf as rf
-import xarray as xr
 
 import sax
 
@@ -48,16 +45,19 @@ def parse_touchstone(
     Note:
         This function uses skrf.Network to parse the touchstone file.
     """
+    import skrf
+    import xarray as xr
+
     if isinstance(content_or_filename, str) and "\n" in content_or_filename:
         with StringIO(content_or_filename) as stream:
             stream.name = _touchstone_name(content_or_filename)
-            ntwk = rf.Network(stream)  # type: ignore[reportArgumentType]
+            ntwk = skrf.Network(stream)  # type: ignore[reportArgumentType]
     else:
         path = Path(content_or_filename).resolve()
         if not path.exists():
             msg = f"Touchstone file {path!r} not found."
             raise FileNotFoundError(msg)
-        ntwk = rf.Network(str(path))
+        ntwk = skrf.Network(str(path))
 
     labels = list(ports)
     if not labels:
@@ -153,6 +153,8 @@ def write_touchstone(df: pd.DataFrame, path: str | Path | None = None) -> Path |
         This function uses skrf.Network.write_touchstone to save the S-parameters.
 
     """
+    import skrf
+
     df = df.copy()
     in_amp_phi_format, in_wl_format = _validate_columns(df)
     modes = {*df["mode_in"], *df["mode_out"]}
@@ -219,6 +221,8 @@ def write_sdict_touchstone(
     ``f`` is in Hz and must match the SDict's frequency axis. Port names and
     their order are recorded in a comment for a later round trip.
     """
+    import skrf
+
     matrix, port_map = sax.sdense(sdict)
     matrix = np.asarray(matrix, dtype=complex)
     if matrix.ndim == 2:
@@ -270,6 +274,8 @@ def read_sdict_touchstone(
     path: str | Path, *, ports: Iterable[str] | None = None
 ) -> tuple[np.ndarray, sax.SDict]:
     """Read a Touchstone file as frequencies in Hz and a SAX SDict."""
+    import skrf
+
     path = Path(path)
     network = skrf.Network(str(path))
     if np.any(network.z0 != network.z0.flat[0]):
