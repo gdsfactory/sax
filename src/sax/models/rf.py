@@ -9,8 +9,8 @@ Complex inputs raise ``TypeError``; specify dielectric loss using a real
 ``tand`` together with real permittivity.
 
 Note:
-    Some models in this module require the ``jaxellip`` package.
-    Install the ``rf`` extra to include it: ``pip install sax[rf]``.
+    Some models in this module use the ``jaxellip`` package, which is a
+    required SAX dependency.
 """
 
 import typing
@@ -21,11 +21,6 @@ import jax.numpy as jnp
 
 import sax
 from sax.constants import C_M_S, DEFAULT_FREQUENCY
-
-try:
-    import jaxellip  # pyright: ignore[reportMissingImports]
-except ImportError:
-    jaxellip = None
 
 
 @partial(jax.jit, inline=True, static_argnames=("n_ports"))
@@ -472,11 +467,11 @@ def lc_shunt_component(
 @partial(jax.jit, inline=True)
 def ellipk_ratio(m: sax.FloatArrayLike) -> jax.Array:
     """Ratio of complete elliptic integrals of the first kind K(m) / K(1-m)."""
-    if jaxellip is None:
-        msg = (
-            "jaxellip is required for RF models. Install it with `pip install sax[rf]`"
-        )
-        raise ImportError(msg)
+    try:
+        import jaxellip  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        msg = "jaxellip is required for RF models and is a SAX dependency"
+        raise ImportError(msg) from None
     m_arr = jnp.asarray(m, dtype=float)
     return jaxellip.ellipk(m_arr) / jaxellip.ellipk(1 - m_arr)
 

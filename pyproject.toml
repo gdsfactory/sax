@@ -31,6 +31,7 @@ lint = [
   "nb-clean>=4.0.1,<7.0.0",
   "nbstripout>=0.9.1,<0.10.0",
   "pre-commit>=4.5.1,<5.0.0",
+  "pyright==1.1.410",
   "ruff==0.17.6",
   "ty==0.0.107"
 ]
@@ -50,7 +51,6 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -95,7 +95,7 @@ keywords = [
 license = { text = "Apache Software License" }
 name = "sax"
 readme = "README.md"
-requires-python = ">=3.11.0"
+requires-python = ">=3.12.0"
 version = "0.18.2"
 
 [[tool.bver.file]]
@@ -119,7 +119,7 @@ testpaths = ["src/tests"]
 
 [tool.ruff]
 fix = true
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -141,6 +141,7 @@ ignore = [
   "PLC0414",  # useless-import-alias
   "PLC0415",  # import-outside-top-level
   "PLR0913",  # too-many-arguments
+  "PLR0917",  # too-many-positional-arguments
   "PLR2004",  # magic-value-comparison
   "PLW2901",  # redefined-loop-name
   "RET504",  # unnecessary-assign
@@ -155,7 +156,9 @@ ignore = [
   "TD003",  # missing-todo-link
   "TID252",  # relative-imports
   "TRY003",  # raise-vanilla-args
-  "UP013"  # convert-typed-dict-functional-to-class
+  "UP013",  # convert-typed-dict-functional-to-class
+  "UP040",  # non-pep695-type-alias (runtime Annotated/Pydantic aliases)
+  "UP047"  # non-pep695-generic-function
 ]
 select = ["ALL"]
 

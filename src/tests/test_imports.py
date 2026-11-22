@@ -6,7 +6,8 @@ This catches missing dependencies declared in pyproject.toml.
 import subprocess
 import sys
 
-HEAVY_MODULES = [
+LAZY_MODULES = [
+    "jaxellip",
     "matplotlib",
     "optax",
     "pandas",
@@ -18,12 +19,12 @@ HEAVY_MODULES = [
 
 
 def test_import_sax_is_lazy() -> None:
-    """``import sax`` must not eagerly import heavy optional dependencies."""
+    """``import sax`` must not eagerly import deferred dependencies."""
     code = (
         "import sys; import sax; print([m for m in sys.argv[1:] if m in sys.modules])"
     )
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "-c", code, *HEAVY_MODULES],
+        [sys.executable, "-c", code, *LAZY_MODULES],
         capture_output=True,
         text=True,
         check=True,
