@@ -18,7 +18,7 @@ repos:
         exclude: 'changelog\.d/.*|CHANGELOG\.md'
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.1
+    rev: v0.17.6
     hooks:
       - id: ruff-format
         args: ['--config', 'pyproject.toml']

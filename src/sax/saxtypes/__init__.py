@@ -137,8 +137,6 @@ __all__ = [
     "Float",
     "FloatArray",
     "FloatArray1D",
-    "FloatArray1D",
-    "FloatArray1DLike",
     "FloatArray1DLike",
     "FloatArray2D",
     "FloatArray2DLike",

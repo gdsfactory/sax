@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 __author__ = "Floris Laporte"
 __version__ = "0.18.2"
 
@@ -210,24 +212,6 @@ from .ports import (
     get_port_naming_strategy,
 )
 
-from .interpolation import (
-    to_xarray,
-    to_df,
-    interpolate_xarray,
-)
-
-from . import fit
-from .parsers import (
-    parse_kfnetlist,
-    parse_kfnetlist_recursive,
-    parse_lumerical_dat,
-    parse_mosaic,
-    parse_touchstone,
-    read_sdict_touchstone,
-    write_lumerical_dat,
-    write_sdict_touchstone,
-    write_touchstone,
-)
 from . import models
 
 
@@ -430,3 +414,60 @@ __all__ = [  # noqa: RUF022
     "write_sdict_touchstone",
     "write_touchstone",
 ]
+
+
+# Heavy, optional imports that should not run on ``import sax``: each entry maps an
+# exported name to the submodule (and attribute) that provides it. The module is
+# only imported on first attribute access (PEP 562).
+_LAZY: dict[str, tuple[str, str | None]] = {
+    "fit": ("fit", None),
+    "interpolation": ("interpolation", None),
+    "parsers": ("parsers", None),
+    "interpolate_xarray": ("interpolation", "interpolate_xarray"),
+    "to_df": ("interpolation", "to_df"),
+    "to_xarray": ("interpolation", "to_xarray"),
+    "parse_kfnetlist": ("parsers", "parse_kfnetlist"),
+    "parse_kfnetlist_recursive": ("parsers", "parse_kfnetlist_recursive"),
+    "parse_lumerical_dat": ("parsers", "parse_lumerical_dat"),
+    "parse_mosaic": ("parsers", "parse_mosaic"),
+    "parse_touchstone": ("parsers", "parse_touchstone"),
+    "read_sdict_touchstone": ("parsers", "read_sdict_touchstone"),
+    "write_lumerical_dat": ("parsers", "write_lumerical_dat"),
+    "write_sdict_touchstone": ("parsers", "write_sdict_touchstone"),
+    "write_touchstone": ("parsers", "write_touchstone"),
+}
+
+
+def __getattr__(name: str) -> object:
+    entry = _LAZY.get(name)
+    if entry is None:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+    from importlib import import_module
+
+    submodule, attr = entry
+    module = import_module(f".{submodule}", __name__)
+    value: object = module if attr is None else getattr(module, attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *_LAZY})
+
+
+if TYPE_CHECKING:
+    from . import fit, parsers
+    from . import interpolation as interpolation
+    from .interpolation import interpolate_xarray, to_df, to_xarray
+    from .parsers import (
+        parse_kfnetlist,
+        parse_kfnetlist_recursive,
+        parse_lumerical_dat,
+        parse_mosaic,
+        parse_touchstone,
+        read_sdict_touchstone,
+        write_lumerical_dat,
+        write_sdict_touchstone,
+        write_touchstone,
+    )
